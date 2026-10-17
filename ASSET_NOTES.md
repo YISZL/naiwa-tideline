@@ -18,3 +18,9 @@ Use case: background-extraction / identity-preserve. Asset type: transparent 2D 
 
 发布优化：所有角色立绘统一缩放至最大边 640 像素并转为 WebP（质量 70），网页资源从约 14.7 MB 降至约 0.33 MB；`scripts/optimize_assets.py` 可重复执行这一流程。
 
+## 粉红蛙透明立绘
+
+`dist/assets/pink-frog.webp` 使用内置 ImageGen 根据用户提供的泳池边粉色角色参考图制作。透明 PNG 源文件位于 `C:/Users/wzl/.codex/generated_images/01a14943-3321-72e3-92a5-89d7ea4d3beb/exec-69d76558-f4b6-4407-b7c0-52d084a83905.png`，发布版本缩放为 640×640 WebP（质量 70）。
+
+提示词摘要：保留粉色圆润角色、绿色大眼睛、粉色猫耳针织帽和坐姿，去除泳池、瓷砖、水面与其他背景，只保留角色全身并输出真实透明背景；不添加文字、道具或其他人物。
+

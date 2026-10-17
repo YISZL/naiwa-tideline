@@ -10,6 +10,35 @@ dialog{border:0;border-radius:22px;background:var(--cream);color:var(--ink);padd
 @media(max-height:760px) and (min-width:861px){.topbar{top:12px;min-height:78px;padding-top:8px;padding-bottom:8px}.brand img{height:54px}.side,.guide{top:106px}.side{bottom:138px}.guide{min-height:108px;padding:10px}.guide>img{height:82px}.recipe,.visitor{padding:10px 12px}.visitor{min-height:112px}.status-hint{bottom:138px}.buildbar{bottom:30px;height:85px}.intro{padding-bottom:8px}.panel-footer{font-size:10px}.status-hint small{display:none}.brand h1{font-size:24px}}
 @media(max-width:860px){.topbar{left:10px;right:10px;top:10px;min-height:78px;padding:9px 12px;gap:8px;border-radius:15px}.brand{min-width:0;flex-shrink:0;gap:7px}.brand img{height:48px;width:29px}.brand h1{font-size:20px;letter-spacing:0}.brand p{font-size:8px}.brand p span{display:none}.resources{gap:11px;justify-content:flex-end;flex-wrap:wrap;row-gap:1px}.resource{min-width:28px}.resource small{font-size:9px;margin:0}.resource strong{font-size:15px}.resource.rep{display:none}.header-tools{display:flex;flex-direction:column;gap:4px}.header-tools .food-link,.header-tools small,#panels-toggle{display:none}.tool-row{gap:3px}.tool-row button{font-size:9px;padding:7px 6px}.guide{left:10px;right:10px;top:99px;min-height:108px;padding:9px 12px;gap:10px;border-radius:15px}.guide>img{width:64px;height:84px}.guide-heading{margin-bottom:5px}.guide-heading strong{font-size:11px}.guide-tabs button{padding:5px 8px;font-size:10px}.guide-copy p{font-size:11px;line-height:1.7}.side{top:auto;bottom:150px;left:10px;right:10px;width:auto;max-height:49dvh;z-index:5;padding:14px;display:none;box-shadow:0 0 0 100vmax #052c3344}.side.active{display:flex}.sheet-close{display:block;font-size:24px;line-height:16px;padding:4px 7px;background:transparent}.panel-heading>span{margin-left:auto}.recipes{flex-direction:row;overflow-x:auto;min-height:166px}.recipe{min-width:200px;flex:1;padding:13px}.recipe h3{font-size:15px}.visitors{max-height:36dvh}.visitor{min-height:112px}.panel-footer{font-size:10px}.mobile-tabs{display:flex;position:absolute;left:50%;transform:translateX(-50%);bottom:104px;gap:6px;pointer-events:auto;background:#173f49e8;padding:5px;border:1px solid #aec7b140;border-radius:15px}.mobile-tabs button{font-size:12px;background:#2b555c;color:#e9ead6;white-space:nowrap;min-width:70px;padding:8px 14px}.mobile-tabs button.active{background:var(--gold);color:var(--ink)}.status-hint{left:20px;right:20px;bottom:155px;padding:9px;border-radius:12px;background:#113c45b8}.status-hint strong{font-size:11px;margin:0}.status-hint small{display:none}.buildbar{left:10px;right:10px;bottom:25px;height:69px;padding:8px;border-radius:15px;gap:0}.build-title{display:none}.build-tools{gap:6px}.build-tools button{font-size:12px;min-width:83px;padding:6px 9px}.build-tools button span{font-size:9px;max-width:108px;overflow:hidden;text-overflow:ellipsis}.build-tools button.active{background:var(--gold)}footer{left:14px;bottom:7px;font-size:8px;right:14px}footer .footer-right{display:none}#toast{bottom:222px;font-size:12px;width:max-content;max-width:calc(100% - 40px);border-radius:14px}.food-dialog[open]{grid-template-columns:125px 1fr;min-height:350px}.food-portrait{min-height:350px}.food-portrait img{height:265px;width:185px;max-width:none;position:absolute;left:-25px;bottom:0}.portrait-halo{width:180px;height:180px;left:-20px;top:60px}.food-content{padding:32px 18px 20px;gap:12px}.food-content h2{font-size:21px}.eyebrow{font-size:8px;letter-spacing:1px}.vendor-quote{font-size:11px}.food-offer{padding:12px}.food-offer-heading strong{font-size:15px}.food-offer-heading span{font-size:12px}.food-note,#food-wallet{font-size:10px}.food-offer button{font-size:12px}.confirm-dialog{padding:25px}.dialog-actions{gap:5px}.dialog-actions button{font-size:11px;padding:10px}.confirm-dialog h2{font-size:23px}.loading h1{font-size:29px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
+
+/* Decoration tools remain folded until the player explicitly opens them. */
+.buildbar{display:none}
+.buildbar.open{display:flex}
+.employee-controls{display:grid;grid-template-columns:1fr auto;gap:7px}
+.employee-controls button{width:auto}
+.employee-controls button:last-child{min-width:86px;background:#e3d5c8;color:#765044}
+.employee-controls button.resume{background:#cfe4d7;color:#25685e}
+.visitor.wanderer{background:linear-gradient(145deg,#f7e1e9,#ece6d9);border:1px solid #e4a9bf}
+.wanderer-dialog[open]{width:760px;grid-template-columns:250px 1fr}
+.wanderer-dialog .food-portrait{background:linear-gradient(155deg,#f3c9d8,#d894b1)}
+.wanderer-dialog .food-portrait img{height:auto;max-height:390px;object-fit:contain}
+.wanderer-offers{display:grid;grid-template-columns:1fr 1fr;gap:8px;max-height:330px;overflow:auto}
+.wanderer-offer{background:#f1eadf;border:1px solid #dfd4c5;border-radius:12px;padding:10px}
+.wanderer-offer>div{display:flex;justify-content:space-between;gap:8px}
+.wanderer-offer strong{font-size:13px}
+.wanderer-offer span{font-size:10px;color:#9a6a3c}
+.wanderer-offer p{font-size:10px;color:var(--muted);margin:6px 0}
+.wanderer-offer button{width:100%;padding:8px;font-size:11px}
+.wanderer-offer.preview{opacity:.72}
+#wanderer-wallet{font-size:12px;color:#936522}
+@media(max-width:860px){
+  .employee-controls{grid-template-columns:1fr}
+  .wanderer-dialog[open]{grid-template-columns:105px 1fr;width:calc(100% - 20px)}
+  .wanderer-dialog .food-portrait img{position:static;width:100%;height:auto}
+  .wanderer-dialog .food-content{padding:27px 12px 16px;gap:8px}
+  .wanderer-offers{grid-template-columns:1fr;max-height:52vh}
+  .buildbar:not(.open)+.mobile-tabs{bottom:25px}
+}
 .voyage-row{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:440px;margin:0 auto 10px;text-align:left}.voyage-row strong{font-size:14px;margin-bottom:3px}.voyage-row small{display:block}.voyage-row button{background:var(--gold);color:var(--ink);font-size:13px;min-width:175px}.voyage-row button:hover:not(:disabled){background:#f1ca85}.voyage-row button:disabled{background:#4b6463;color:#a9c1b7}.status-hint>strong{font-size:12px}.food-dialog #eat-food{font-size:12px;background:#e2d7b9;color:#6f572c}.food-dialog #eat-food:disabled{color:#a6a392;background:#edebdf}
 /* The HUD lets sea clicks pass through; voyage controls must receive pointer input. */
 .status-hint{pointer-events:auto}
