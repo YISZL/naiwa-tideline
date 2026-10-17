@@ -16,7 +16,11 @@ function stage(){return !game.has('workshop')?'start':!game.trades?'craft':game.
 function setGuide(id){selectedGuide=id;renderGuide();}
 function renderGuide(){
   const bar=$('#guide-bar');if(game.atSea()){bar.hidden=true;return;}bar.hidden=false;
-  const unlocked=game.introComplete();$$('[data-guide]').forEach(button=>button.hidden=unlocked);$('#renbo-task-open').hidden=!unlocked;$('#chaorui-task-open').hidden=!unlocked;
+  const unlocked=game.introComplete();$$('[data-guide]').forEach(button=>button.hidden=unlocked);
+  for(const id of ['renbo','chaorui']){
+    const button=$(`#${id}-task-open`);button.hidden=false;button.classList.toggle('locked',!unlocked);button.setAttribute('aria-disabled',String(!unlocked));
+    if(!unlocked)button.textContent=`${id==='renbo'?'仁博 · 出海任务':'晁瑞 · 建造任务'}（未解锁）`;
+  }
   if(unlocked){const guide=characters.guides[0],renboReady=game.questBoard('renbo').tasks.filter(task=>game.questComplete(task)).length,chaoruiReady=game.questBoard('chaorui').tasks.filter(task=>game.questComplete(task)).length;$('#guide-image').src=guide.image;$('#guide-image').alt=guide.name;$('#guide-name').textContent='任务铺已营业';$('#guide-line').textContent=`仁博负责出海任务，晁瑞负责建造任务。可领取奖励：仁博 ${renboReady} 个 · 晁瑞 ${chaoruiReady} 个。`;return;}
   const current=stage();if(current!==lastStage){selectedGuide=current==='start'?'renbo':'chaorui';lastStage=current;}
   const guide=characters.guides.find(g=>g.id===selectedGuide);$('#guide-image').src=guide.image;$('#guide-image').alt=guide.name;
@@ -168,7 +172,7 @@ function setupUI(){
   $('#hire-zihao').onclick=()=>{const error=game.hireEmployee('zihao');if(error)notify(error);else{renderRecruitment();save();}};
   $('#hire-haozi').onclick=()=>{const error=game.hireEmployee('haozi');if(error)notify(error);else{renderRecruitment();save();}};
   for(const id of ['renbo','chaorui']){
-    $(`#${id}-task-open`).onclick=()=>{if(!game.introComplete())return;setSheet('none');openDialog(`#${id}-task-dialog`);};
+    $(`#${id}-task-open`).onclick=()=>{if(!game.introComplete()){notify('完成开场任务后解锁：建造加工台、完成 1 次交易并达到 3 点声望');return;}setSheet('none');openDialog(`#${id}-task-dialog`);};
     $(`#${id}-task-close`).onclick=()=>closeDialog(`#${id}-task-dialog`);
     $(`#${id}-quests`).onclick=event=>{const card=event.target.closest('[data-quest]');if(!card||!event.target.closest('button'))return;const result=game.claimQuest(id,card.dataset.quest);if(result.error)notify(result.error);else{renderQuestBoards();save();}};
   }
