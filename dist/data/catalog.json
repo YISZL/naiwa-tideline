@@ -367,9 +367,8 @@
     "queue_limit": 3,
     "wanderer": {
       "name": "粉红蛙",
-      "visit_seconds": 600,
-      "check_seconds": 60,
-      "spawn_chance": 0.35,
+      "visit_seconds": 300,
+      "interval_seconds": 600,
       "stock_min": 3,
       "stock_max": 5,
       "catalog": [

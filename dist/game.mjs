@@ -67,7 +67,7 @@ function renderVendor(){
 }
 function renderWanderer(){
   const merchant=game.wanderer,container=$('#wanderer-offers');
-  if(!merchant){container.innerHTML='<div class="quest-empty">粉红蛙已经离港</div>';$('#wanderer-wallet').textContent=`奶蛙的金币：${game.coins}`;$('#wanderer-timer').textContent='等待下一次随机停靠';return;}
+  if(!merchant){container.innerHTML='<div class="quest-empty">粉红蛙已经离港</div>';$('#wanderer-wallet').textContent=`奶蛙的金币：${game.coins}`;$('#wanderer-timer').textContent=`距离下次必定出现 ${formatClock(game.wandererNextSeconds())}`;return;}
   container.innerHTML=merchant.offers.map((offer,index)=>{const item=game.items[offer.item],error=game.wandererPurchaseError(index),preview=!offer.implemented||item.implemented===false;return `<article class="wanderer-offer${preview?' preview':''}"><div><strong>${escape(item.name)}</strong><span>${offer.price} 金币 / 件</span></div><p>本次库存 ${offer.quantity}${preview?' · 后续版本开放':` · 已拥有 ${game.count(offer.item)}`}</p><button class="primary" data-wanderer-offer="${index}" ${error?'disabled':''}>${escape(error||'购买 1 件')}</button></article>`;}).join('');
   $$('[data-wanderer-offer]').forEach(button=>button.onclick=()=>{const error=game.buyWanderer(Number(button.dataset.wandererOffer));notify(error||'购买成功');renderWanderer();if(!error)save();});
   $('#wanderer-wallet').textContent=`奶蛙的金币：${game.coins}`;$('#wanderer-timer').textContent=`粉红蛙将在 ${formatClock(Math.ceil(merchant.remaining))} 后离港 · 再次出现时库存和价格会全部刷新`;
