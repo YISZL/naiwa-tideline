@@ -2,24 +2,31 @@
   "hero": {
     "id":"naiwa",
     "name":"奶蛙",
-    "image":"./assets/naiwa.png",
+    "image":"./assets/naiwa.webp",
     "world_height":1.85
   },
   "workers": [
-    {"id":"bian","name":"便","role":"扩建工人","image":"./assets/bian-head.png","world_height":1.5}
+    {"id":"bian","name":"便","role":"扩建工人","image":"./assets/bian-head.webp","world_height":1.5}
+  ],
+  "recruiters": [
+    {"id":"muscle_frog","name":"肌肉蛙","role":"员工招募","image":"./assets/muscle-frog.webp","world_height":1.5}
+  ],
+  "employees": [
+    {"id":"zihao","name":"自豪","role":"自动打捞员工","image":"./assets/zihao.webp","world_height":1.32},
+    {"id":"haozi","name":"豪自","role":"自动加工员工","image":"./assets/haozi.webp","world_height":1.3}
   ],
   "companions": [
-    {"id":"yue","name":"樾","role":"出海伙伴","image":"./assets/yue.png","world_height":1.25}
+    {"id":"yue","name":"樾","role":"出海伙伴","image":"./assets/yue.webp","world_height":1.25}
   ],
   "suppliers": [
-    {"id":"food_supplier","name":"食物供应商","image":"./assets/food-supplier.png","world_height":1.7}
+    {"id":"food_supplier","name":"食物供应商","image":"./assets/food-supplier.webp","world_height":1.7}
   ],
   "guides": [
     {
       "id":"renbo",
       "name":"仁博",
-      "role":"打捞与建造",
-      "image":"./assets/renbo.png",
+      "role":"出海任务发放员",
+      "image":"./assets/renbo.webp",
       "lines":{
         "start":"奶蛙，先建一张加工台吧！要补充物资就出海，点击随机打捞。出海消耗 1 体力，吃猪脚饭能恢复 2 点。",
         "craft":"加工台已经就绪！材料不足时出海随机打捞；海面偶尔漂来的物资也能顺手拾取。每小时自然恢复 1 点体力。",
@@ -30,8 +37,8 @@
     {
       "id":"chaorui",
       "name":"晁瑞",
-      "role":"制作与交易",
-      "image":"./assets/chaorui.png",
+      "role":"建造任务发放员",
+      "image":"./assets/chaorui.webp",
       "lines":{
         "start":"奶蛙，右侧的顾客各有所需。先跟仁博建好加工台，我们就能制作他们要买的商品了。",
         "craft":"先看看右侧订单吧！航海客要两份绳索。制作完成后，点击订单上的「交付」就能换取金币和声望。",

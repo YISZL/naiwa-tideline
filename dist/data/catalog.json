@@ -26,8 +26,7 @@
   "buildings": [
     {"id":"workshop","name":"加工台","description":"解锁道具制作","cost":{"wood":6,"scrap":2},"coins":20,"color":"ebae77"},
     {"id":"warehouse","name":"仓库","description":"原料容量 +40","cost":{"wood":8,"scrap":2},"coins":25,"color":"9ebfb8"},
-    {"id":"shop","name":"商店","description":"接待前来采购的顾客","cost":{"wood":6,"cloth":2},"coins":20,"color":"ed947a"},
-    {"id":"dock","name":"码头","description":"接引顾客船只，需位于平台边缘","cost":{"wood":5},"coins":15,"color":"d8bd8d"},
+    {"id":"dock","name":"码头","description":"每座码头提供 1 个订单泊位，需位于平台边缘","cost":{"wood":5},"coins":15,"color":"d8bd8d"},
     {"id":"dormitory","name":"宿舍","description":"2 个床位，入住伙伴每 30 分钟获得 1 点经验，离线有效","cost":{"wood":8,"scrap":2,"cloth":4},"coins":25,"color":"a8b8d8"}
   ],
   "settings": {
@@ -43,6 +42,29 @@
     "dormitory_beds":2,
     "dormitory_xp_seconds":1800,
     "companion":{"max_level":10,"xp_base":5,"xp_step":2,"quantity_percent":20,"fine_base":10,"fine_step":2,"rare_base":2,"rare_step":1},
+    "employee_meal_seconds":1200,
+    "employees":{
+      "zihao":{"name":"自豪","price":100,"max":10,"voyage_seconds":600},
+      "haozi":{"name":"豪自","price":150,"max":10,"work_seconds":1}
+    },
+    "quests":{
+      "refresh_seconds":3600,
+      "max_per_board":3,
+      "coin_reward":{"min":18,"max":42},
+      "material_reward":{"min":2,"max":5},
+      "boards":{
+        "renbo":[
+          {"kind":"voyage","metric":"voyages","name":"完成出海","unit":"次","min":1,"max":2},
+          {"kind":"salvage","metric":"salvages","name":"随机打捞","unit":"次","min":2,"max":5},
+          {"kind":"cargo","metric":"gathered","name":"带回物资","unit":"份","min":4,"max":9}
+        ],
+        "chaorui":[
+          {"kind":"expand","metric":"expanded","name":"扩建平台","unit":"格","min":1,"max":2},
+          {"kind":"build","metric":"built","name":"建造建筑","unit":"座","min":1,"max":2},
+          {"kind":"craft","metric":"crafted","name":"完成制作","unit":"件","min":1,"max":3}
+        ]
+      }
+    },
     "salvage_loot":[{"item":"wood","weight":55,"min":1,"max":3},{"item":"scrap","weight":25,"min":1,"max":2},{"item":"cloth","weight":20,"min":1,"max":2}],
     "starting_inventory":{"wood":12,"scrap":5,"cloth":6},
     "base_capacity":40,
