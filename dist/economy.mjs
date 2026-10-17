@@ -24,6 +24,7 @@ export class Economy {
     this.queue=[]; this.visitors=[]; this.clock=0; this.nextVisitor=0; this.elapsed=0;
     this.stamina=this.settings.max_stamina;this.staminaAt=Date.now();this.voyageUntil=0;this.salvageUntil=0;
     this.companion={level:1,xp:0,equipped:true};
+    this.housing={dorm:null,trainedAt:0,progress:0};
     this.construction=null;
     this.spawnVisitor();this.spawnVisitor();this.onChange();
   }
@@ -83,6 +84,12 @@ export class Economy {
   atSea(){return this.voyageUntil>0;}
   syncClock(now=Date.now()){
     let dirty=false;
+    const h=this.housing,step=this.settings.dormitory_xp_seconds*1000;
+    if(h.dorm&&this.companion.level<this.settings.companion.max_level){
+      if(now<h.trainedAt){h.trainedAt=now;dirty=true;}
+      const total=h.progress+Math.max(0,now-h.trainedAt),points=Math.floor(total/step);
+      if(points>0){h.progress=total%step;h.trainedAt=now;this.addCompanionXp(points);if(this.companion.level===this.settings.companion.max_level)h.progress=0;dirty=true;}
+    }
     if(now<this.staminaAt)this.staminaAt=now;
     if(this.stamina<this.settings.max_stamina){const step=this.settings.stamina_regen_seconds*1000,n=Math.floor((now-this.staminaAt)/step);if(n>0){this.stamina=Math.min(this.settings.max_stamina,this.stamina+n);this.staminaAt=this.stamina===this.settings.max_stamina?now:this.staminaAt+n*step;dirty=true;}}
     if(this.voyageUntil&&now>=this.voyageUntil){this.voyageUntil=0;dirty=true;this.onNotice('本次航行结束，奶娃已安全返航');}
@@ -99,8 +106,15 @@ export class Economy {
   salvageError(now=Date.now()){if(!this.atSea())return '先出海再打捞';if(now<this.salvageUntil)return `打捞准备中 · ${Math.ceil((this.salvageUntil-now)/1000)} 秒`;if(this.rawTotal()>=this.capacity())return '原料仓已满，返航制作或扩建仓库吧';return '';}
   companionXpNeeded(level=this.companion.level){const c=this.settings.companion;return c.xp_base+(level-1)*c.xp_step;}
   companionBonuses(level=this.companion.level){const c=this.settings.companion;return {quantity:level*c.quantity_percent,fine:c.fine_base+level*c.fine_step,rare:c.rare_base+level*c.rare_step};}
-  setCompanion(equipped){this.syncClock();if(this.atSea())return '返航后再调整同行伙伴';if(typeof equipped!=='boolean')return '伙伴状态无效';this.companion.equipped=equipped;this.onChange();return '';}
-  gainCompanionXp(){const c=this.companion;if(!c.equipped||c.level>=this.settings.companion.max_level)return;c.xp++;while(c.level<this.settings.companion.max_level&&c.xp>=this.companionXpNeeded()){c.xp-=this.companionXpNeeded();c.level++;this.onNotice(`樾升到 Lv.${c.level}，数量和品质加成提升！`);}if(c.level===this.settings.companion.max_level)c.xp=0;}
+  setCompanion(equipped,now=Date.now()){this.syncClock(now);if(this.atSea())return '返航后再调整同行伙伴';if(typeof equipped!=='boolean')return '伙伴状态无效';if(equipped)this.leaveHousing(now);this.companion.equipped=equipped;this.onChange();return '';}
+  gainCompanionXp(){if(this.companion.equipped)this.addCompanionXp(1);}
+  addCompanionXp(amount){const c=this.companion;if(!positive(amount)||c.level>=this.settings.companion.max_level)return;c.xp+=amount;while(c.level<this.settings.companion.max_level&&c.xp>=this.companionXpNeeded()){c.xp-=this.companionXpNeeded();c.level++;this.onNotice(`樾升到 Lv.${c.level}，数量和品质加成提升！`);}if(c.level===this.settings.companion.max_level)c.xp=0;}
+  dormitories(){return Object.entries(this.structures).filter(([,b])=>b.id==='dormitory').map(([k])=>k);}
+  housingError(dorm){if(this.atSea())return '返航后调整住宿';if(this.structures[dorm]?.id!=='dormitory')return '先在岛上建造宿舍';if(this.housing.dorm===dorm)return '樾已经住在这栋宿舍';return '';}
+  houseCompanion(dorm,now=Date.now()){this.syncClock(now);const error=this.housingError(dorm);if(error)return error;this.leaveHousing(now);this.companion.equipped=false;this.housing.dorm=dorm;this.housing.trainedAt=now;this.onChange();this.onNotice('樾已入住宿舍，每 30 分钟获得 1 点经验，离线也成长');return '';}
+  leaveHousing(now){const h=this.housing;if(h.dorm){h.progress=this.companion.level>=this.settings.companion.max_level?0:(h.progress+Math.max(0,now-h.trainedAt))%(this.settings.dormitory_xp_seconds*1000);h.dorm=null;h.trainedAt=0;}}
+  unhouseCompanion(now=Date.now()){this.syncClock(now);if(this.atSea())return '返航后调整住宿';if(!this.housing.dorm)return '樾尚未入住';this.leaveHousing(now);this.onChange();return '';}
+  housingSecondsRemaining(now=Date.now()){if(!this.housing.dorm||this.companion.level>=this.settings.companion.max_level)return 0;const step=this.settings.dormitory_xp_seconds*1000;return Math.max(0,Math.ceil((step-this.housing.progress-Math.max(0,now-this.housing.trainedAt))/1000));}
   salvage(now=Date.now(),rng=Math.random){
     this.syncClock(now);const error=this.salvageError(now);if(error)return {error};
     const table=this.settings.salvage_loot,total=table.reduce((n,l)=>n+l.weight,0);let pick=rng()*total,loot=table.at(-1);
@@ -110,7 +124,7 @@ export class Economy {
     const amount=this.collect(item,quantity);if(!amount)return {error:'原料仓已满'};
     this.salvageUntil=now+this.settings.salvage_seconds*1000;this.gainCompanionXp();this.onChange();return {item,amount,error:''};
   }
-  snapshot(){return structuredClone({version:1,construction:this.construction,companion:this.companion,stamina:this.stamina,staminaAt:this.staminaAt,voyageUntil:this.voyageUntil,salvageUntil:this.salvageUntil,inventory:this.inventory,coins:this.coins,reputation:this.reputation,trades:this.trades,gathered:this.gathered,tiles:[...this.tiles],structures:this.structures,queue:this.queue,visitors:this.visitors,clock:this.clock,nextVisitor:this.nextVisitor,elapsed:this.elapsed});}
+  snapshot(){return structuredClone({version:1,housing:this.housing,construction:this.construction,companion:this.companion,stamina:this.stamina,staminaAt:this.staminaAt,voyageUntil:this.voyageUntil,salvageUntil:this.salvageUntil,inventory:this.inventory,coins:this.coins,reputation:this.reputation,trades:this.trades,gathered:this.gathered,tiles:[...this.tiles],structures:this.structures,queue:this.queue,visitors:this.visitors,clock:this.clock,nextVisitor:this.nextVisitor,elapsed:this.elapsed});}
   restore(data){
     try{
       if(!data||data.version!==1||!data.inventory||typeof data.inventory!=='object')throw Error();
@@ -129,10 +143,13 @@ export class Economy {
       if(construction){const k=construction.cell;if(typeof k!=='string'||!/^(-?\d+),(-?\d+)$/.test(k)||tiles.has(k)||cell(k).some(n=>Math.abs(n)>this.settings.max_grid_radius)||!tiles.has(construction.from)||!Number.isFinite(construction.remaining)||construction.remaining<=0||construction.remaining>this.settings.construction_seconds)throw Error();const[x,z]=cell(k),[a,b]=cell(construction.from);if(Math.abs(x-a)+Math.abs(z-b)!==1)throw Error();for(const[p,s]of Object.entries(data.structures||{})){if(s.id!=='dock')continue;const[dx,dz]=cell(p);if(!directions.some(([ox,oz])=>!tiles.has(key(dx+ox,dz+oz))&&key(dx+ox,dz+oz)!==k))throw Error();}}
       if(!data.structures||typeof data.structures!=='object'||Array.isArray(data.structures))throw Error();
       for(const [k,b]of Object.entries(data.structures)){if(!tiles.has(k)||!this.buildings[b.id]||!nonnegative(b.rotation)||b.rotation>3)throw Error();if(b.id==='dock'){const[x,z]=cell(k);if(!directions.some(([dx,dz])=>!tiles.has(key(x+dx,z+dz))))throw Error();}}
+      const housing=data.housing??{dorm:null,trainedAt:0,progress:0};
+      if(!housing||typeof housing!=='object'||Array.isArray(housing)||!Number.isFinite(housing.trainedAt)||housing.trainedAt<0||!Number.isFinite(housing.progress)||housing.progress<0||housing.progress>=this.settings.dormitory_xp_seconds*1000||(housing.dorm!==null&&(typeof housing.dorm!=='string'||data.structures[housing.dorm]?.id!=='dormitory'||companion.equipped)))throw Error();
       if(!Array.isArray(data.queue)||data.queue.length>this.settings.queue_limit)throw Error();for(const t of data.queue)if(!this.recipes[t.recipe]||!Number.isFinite(t.remaining)||t.remaining<=0||t.remaining>this.recipes[t.recipe].seconds)throw Error();
       if(!Array.isArray(data.visitors)||data.visitors.length>3)throw Error();const slots=new Set();for(const v of data.visitors){if(!this.npcs[v.npc]||!this.items[v.item]||!positive(v.quantity)||!positive(v.reward)||!nonnegative(v.slot)||v.slot>2||slots.has(v.slot)||!Number.isFinite(v.remaining)||v.remaining<=0||!Number.isFinite(v.age)||v.age<0)throw Error();slots.add(v.slot);}
       const copy=structuredClone(data);for(const id of Object.keys(this.items))copy.inventory[id]??=0;
       this.companion=structuredClone(companion);
+      this.housing=structuredClone(housing);
       this.construction=structuredClone(construction);
       for(const p of ['inventory','coins','reputation','trades','gathered','structures','queue','visitors','clock','nextVisitor','elapsed'])this[p]=copy[p];this.tiles=tiles;this.stamina=stamina;this.staminaAt=staminaAt;this.voyageUntil=voyageUntil;this.salvageUntil=salvageUntil;this.syncClock();this.onChange();return '';
     }catch{return '存档无法读取，原文件已保留。可下载备份后开始新局。';}

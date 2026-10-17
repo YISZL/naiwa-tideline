@@ -27,7 +27,8 @@
     {"id":"workshop","name":"加工台","description":"解锁道具制作","cost":{"wood":6,"scrap":2},"coins":20,"color":"ebae77"},
     {"id":"warehouse","name":"仓库","description":"原料容量 +40","cost":{"wood":8,"scrap":2},"coins":25,"color":"9ebfb8"},
     {"id":"shop","name":"商店","description":"接待前来采购的顾客","cost":{"wood":6,"cloth":2},"coins":20,"color":"ed947a"},
-    {"id":"dock","name":"码头","description":"接引顾客船只，需位于平台边缘","cost":{"wood":5},"coins":15,"color":"d8bd8d"}
+    {"id":"dock","name":"码头","description":"接引顾客船只，需位于平台边缘","cost":{"wood":5},"coins":15,"color":"d8bd8d"},
+    {"id":"dormitory","name":"宿舍","description":"2 个床位，入住伙伴每 30 分钟获得 1 点经验，离线有效","cost":{"wood":8,"scrap":2,"cloth":4},"coins":25,"color":"a8b8d8"}
   ],
   "settings": {
     "starting_coins":80,
@@ -39,6 +40,8 @@
     "salvage_seconds":6,
     "floating_interval_seconds":18,
     "construction_seconds":4,
+    "dormitory_beds":2,
+    "dormitory_xp_seconds":1800,
     "companion":{"max_level":10,"xp_base":5,"xp_step":2,"quantity_percent":20,"fine_base":10,"fine_step":2,"rare_base":2,"rare_step":1},
     "salvage_loot":[{"item":"wood","weight":55,"min":1,"max":3},{"item":"scrap","weight":25,"min":1,"max":2},{"item":"cloth","weight":20,"min":1,"max":2}],
     "starting_inventory":{"wood":12,"scrap":5,"cloth":6},

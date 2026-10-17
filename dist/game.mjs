@@ -60,7 +60,7 @@ function render(){
   for(const id of Object.keys(game.items)){$(`[data-count="${id}"]`)?.replaceChildren(document.createTextNode(game.count(id)));}
   $('[data-count="coins"]').textContent=game.coins;$('[data-count="reputation"]').textContent=String(game.reputation).padStart(2,'0');
   $('#pause').textContent=paused?'继续':'暂停';renderGuide();renderRecipes();renderVisitors();renderVendor();
-  renderJourney();renderCompanion();updateHint();
+  renderJourney();renderCompanion();renderDorm();updateHint();
   if(game.structures[hero.cell]){hero.cell=[...game.tiles].find(k=>!game.structures[k]&&k!==game.reservedCell())||hero.cell;[hero.x,hero.z]=cell(hero.cell).map(n=>n*TILE);hero.path=[];}
 }
 function selectMode(id){if(game.atSea()&&id!=='collect'){notify('返航后才能建造');return;}mode=id;$$('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===id));setSheet('none');updateHint();}
@@ -73,16 +73,31 @@ function renderJourney(){
 }
 function renderCompanion(){
   const c=game.companion,b=game.companionBonuses(),max=c.level===game.settings.companion.max_level,needed=game.companionXpNeeded();
-  $('#companion-summary').textContent=`樾 · Lv.${c.level} · ${c.equipped?'同行':'休息'}`;
-  $('#companion-desktop').textContent=`樾 Lv.${c.level} · ${c.equipped?'同行':'休息'}`;
-  $('#companion-brief').textContent=c.equipped?`数量 +${b.quantity}% · 精良 ${b.fine}% · 稀有 ${b.rare}%`:'出战后提升打捞数量和品质';
+  const state=c.equipped?'同行':game.housing.dorm?'住宿':'休息';
+  $('#companion-summary').textContent=`樾 · Lv.${c.level} · ${state}`;
+  $('#companion-desktop').textContent=`樾 Lv.${c.level} · ${state}`;
+  $('#companion-brief').textContent=c.equipped?`数量 +${b.quantity}% · 精良 ${b.fine}% · 稀有 ${b.rare}%`:game.housing.dorm?'正在宿舍缓慢成长 · 离线有效':'出战提升打捞，住宿则自动成长';
   $('#companion-level').textContent=`Lv.${c.level}`;
-  $('#companion-status').textContent=game.atSea()?(c.equipped?'樾正在陪同奶娃出海。返航后可调整。':'樾在岛上休息，返航后可邀请同行。'):(c.equipped?'已准备同行，下次出海自动陪同奶娃。':'正在岛上休息，出战后可陪同奶娃。');
+  $('#companion-status').textContent=game.atSea()?(c.equipped?'樾正在陪同奶娃出海。返航后可调整。':game.housing.dorm?'樾留在宿舍成长，奶娃本次独自出海。':'樾在岛上休息，返航后可邀请同行。'):(c.equipped?'已准备同行，下次出海自动陪同奶娃。':game.housing.dorm?'樾已入住宿舍，离线期间也会继续成长。':'正在岛上休息，可选择出战或入住宿舍。');
   $('#companion-bonus').textContent=`平均打捞数量 +${b.quantity}%`;
   $('#companion-quality').textContent=`精良概率 ${b.fine}% · 稀有概率 ${b.rare}%`;
   $('#companion-xp').textContent=max?'已满级':`经验 ${c.xp} / ${needed} · 还需 ${needed-c.xp} 次成功打捞升级`;
   $('#companion-xp-bar').style.width=max?'100%':`${c.xp/needed*100}%`;
   const button=$('#companion-toggle');button.disabled=game.atSea();button.textContent=game.atSea()?'返航后调整':c.equipped?'让樾休息':'邀请樾出战';
+  $('#companion-dorm').disabled=game.atSea();
+}
+function formatClock(seconds){return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;}
+function renderDorm(){
+  const rooms=game.dormitories(),empty=$('#dorm-empty'),body=$('#dorm-rooms'),select=$('#dorm-room'),previous=select.value;
+  empty.hidden=rooms.length>0;body.hidden=!rooms.length;
+  if(!rooms.length)return;
+  select.innerHTML=rooms.map((k,i)=>`<option value="${escape(k)}">宿舍 ${i+1} · 平台 ${escape(k)}</option>`).join('');
+  select.value=rooms.includes(previous)?previous:(game.housing.dorm||rooms[0]);
+  const housed=Boolean(game.housing.dorm),here=game.housing.dorm===select.value,max=game.companion.level===game.settings.companion.max_level;
+  $('#dorm-yue-name').textContent=`樾 · Lv.${game.companion.level} · ${here?'已入住':housed?'住在其他宿舍':'等待入住'}`;
+  $('#dorm-yue-progress').textContent=max?'已满级':here?`下一点经验 ${formatClock(game.housingSecondsRemaining())}`:'入住后每 30 分钟获得 1 点经验';
+  const action=$('#dorm-action');action.disabled=game.atSea();action.textContent=game.atSea()?'返航后调整':here?'让樾退宿休息':housed?'搬到这栋宿舍':'安置樾';
+  $('#dorm-note').textContent=here?'离开页面也会按真实时间累计；邀请出海会自动退宿。':'入住会取消樾的出战状态，已积累的不足 30 分钟进度会保留。';
 }
 function updateHint(){
   if(game.construction&&!game.atSea()){$('#mode-hint').textContent=`便正在扩建 · 还需 ${Math.ceil(game.construction.remaining)} 秒`;return;}
@@ -123,13 +138,19 @@ function setupUI(){
   $('#companion-desktop').onclick=$('#companion-open').onclick;
   $('#companion-close').onclick=()=>closeDialog('#companion-dialog');
   $('#companion-toggle').onclick=()=>{const error=game.setCompanion(!game.companion.equipped);if(error)notify(error);else save();};
+  $('#companion-dorm').onclick=()=>{closeDialog('#companion-dialog');openDialog('#dorm-dialog');};
+  $('#dorm-mobile').onclick=()=>{setSheet('none');openDialog('#dorm-dialog');};
+  $('#dorm-close').onclick=()=>closeDialog('#dorm-dialog');
+  $('#dorm-build').onclick=()=>{closeDialog('#dorm-dialog');selectMode('dormitory');notify('选择一个空平台建造宿舍');};
+  $('#dorm-room').onchange=renderDorm;
+  $('#dorm-action').onclick=()=>{const error=game.housing.dorm===$('#dorm-room').value?game.unhouseCompanion():game.houseCompanion($('#dorm-room').value);if(error)notify(error);else save();};
   $('#eat-food').onclick=()=>{const error=game.eatFood();if(error)notify(error);else save();};
   $('#voyage-button').onclick=()=>{if(paused)return;if(game.atSea()){game.returnHome();}else{mode='collect';selectMode('collect');const error=game.beginVoyage();notify(error||'奶娃出海了！体力 -1，本次航行 60 秒');}save();};
   $('#salvage-button').onclick=()=>{if(paused)return;const level=game.companion.level,result=game.salvage();notify(result.error||`随机打捞：${game.items[result.item].name} +${result.amount}${game.companion.level>level?` · 樾升到 Lv.${game.companion.level}！`:''}`);if(!result.error)save();};
   $('#pause').onclick=()=>{paused=!paused;render();};$('#save').onclick=()=>save(true);$('#new').onclick=()=>openDialog('#new-dialog');$('#cancel-new').onclick=()=>closeDialog('#new-dialog');
   $('#confirm-new').onclick=()=>{game.reset();hero={x:0,z:0,cell:'0,0',path:[],flip:false};saveBlocked=false;resources=[];boats.clear();for(let i=0;i<19;i++)spawnResource();lastStage='';pan={x:0,z:0};mode='collect';dialogPreviousPause=false;closeDialog('#new-dialog');selectMode('collect');save();notify('奶娃的新航程开始了');};
   $('#backup').onclick=()=>{let data;try{data=saveBlocked?localStorage.getItem(STORE):JSON.stringify(game.snapshot(),null,2);}catch{}const url=URL.createObjectURL(new Blob([data||JSON.stringify(game.snapshot(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='潮汐集市-存档.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-  for(const id of ['#food-dialog','#new-dialog','#companion-dialog'])$(id).addEventListener('cancel',event=>{event.preventDefault();closeDialog(id);});
+  for(const id of ['#food-dialog','#new-dialog','#companion-dialog','#dorm-dialog'])$(id).addEventListener('cancel',event=>{event.preventDefault();closeDialog(id);});
 }
 
 function resize(){w=innerWidth;h=innerHeight;dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);}
@@ -171,6 +192,11 @@ function drawBuilding(k,b){
     const c=Math.cos(turn),s=Math.sin(turn);for(const a of [-.48,.48]){const xx=x+a*c-.35*s,zz=z+a*s+.35*c;cube(xx,zz,.1,.1,.7,.2,'#d8bd89');cube(xx,zz,.16,.16,.06,.9,'#648b83');}
     line3([[x-.5*c,z-.5*s,.7],[x+.5*c,z+.5*s,.7]],'#ac8757',4);
     const p=project(x,z,.62);ctx.strokeStyle='#e5af65';ctx.lineWidth=3;ctx.beginPath();ctx.arc(p.x,p.y,scale()*.13,0,7);ctx.stroke();
+  }else if(b.id==='dormitory'){
+    cube(x,z,1.08,.88,.72,.21,'#a8b8d8');cube(x,z-.02,1.23,1.02,.18,.91,'#667ca3');
+    cube(x,z+.46,.34,.035,.48,.22,'#efe4c7');for(const a of[-.34,.34])cube(x+a,z+.46,.22,.035,.23,.57,'#8fc4c6');
+    for(const a of[-.39,.39])cube(x+a,z-.46,.08,.08,.42,.2,'#66745d');
+    textAt('伙伴宿舍',x,z,1.34,'#fff0bd',w<=860?9:10);
   }
 }
 function spawnResource(){
@@ -259,7 +285,8 @@ function clickWorld(x,y){
   const vendor=game.reservedCell();if(vendor){const[a,b]=cell(vendor).map(n=>n*TILE),p=project(a,b,.8);if(Math.hypot(x-p.x,y-p.y)<Math.max(24,scale()*.75)){openDialog('#food-dialog');return;}}
   const r=resourceAt(x,y);if(r){const n=game.collect(r.id,r.amount);if(n){r.amount-=n;if(!r.amount)resources.splice(resources.indexOf(r),1);notify(`奶娃打捞到 ${game.items[r.id].name} +${n}`);}return;}
   const p=unproject(x,y),k=key(Math.round(p.x/TILE),Math.round(p.z/TILE));
-  if(mode!=='collect'){const error=game.build(mode,k,rotation);notify(error||(mode==='expand'?'便已接下扩建，正在施工…':`${game.buildings[mode].name}已建好`));if(!error)save();return;}
+  if(mode!=='collect'){const built=mode,error=game.build(built,k,rotation);notify(error||(built==='expand'?'便已接下扩建，正在施工…':`${game.buildings[built].name}已建好`));if(!error){save();if(built==='dormitory'){selectMode('collect');openDialog('#dorm-dialog');}}return;}
+  if(game.structures[k]?.id==='dormitory'){openDialog('#dorm-dialog');return;}
   for(const[slot,b]of boats){const p=project(b.x,b.z,.3);if(Math.hypot(x-p.x,y-p.y)<Math.max(22,scale()*.5)){const error=game.trade(slot);if(error)notify(error);return;}}
   pathTo(k);
 }
@@ -269,10 +296,10 @@ function bindInput(){
   canvas.addEventListener('pointermove',e=>{pointer={x:e.clientX,y:e.clientY};const p=unproject(pointer.x,pointer.y);hover=key(Math.round(p.x/TILE),Math.round(p.z/TILE));if(drag&&Math.hypot(e.clientX-drag.x,e.clientY-drag.y)>8){dragged=true;const a=unproject(drag.x,drag.y),b=unproject(e.clientX,e.clientY);pan.x+=a.x-b.x;pan.z+=a.z-b.z;drag.x=e.clientX;drag.y=e.clientY;}canvas.style.cursor=mode!=='collect'?'crosshair':resourceAt(pointer.x,pointer.y)?'pointer':'default';updateHint();});
   canvas.addEventListener('pointerup',e=>{if(drag&&!dragged&&e.button===0)clickWorld(e.clientX,e.clientY);drag=null;});canvas.addEventListener('pointercancel',()=>drag=null);
   canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(32,Math.min(82,zoom-e.deltaY*.03));},{passive:false});
-  addEventListener('keydown',e=>{if(['Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();if(e.target.closest('button,dialog,input'))return;if($('#food-dialog').open||$('#new-dialog').open)return;if(e.code==='Escape'){selectMode('collect');setSheet('none');}if(e.code==='Space'&&!e.repeat){paused=!paused;render();}if(e.code==='KeyR')rotation=(rotation+1)%4;if(e.code==='KeyF'){pan={x:0,z:0};yaw=.65;}if(e.code==='F5'){e.preventDefault();save(true);}keys.add(e.code);});addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());
+  addEventListener('keydown',e=>{if(['Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();if(e.target.closest('button,dialog,input,select'))return;if($$('dialog').some(d=>d.open))return;if(e.code==='Escape'){selectMode('collect');setSheet('none');}if(e.code==='Space'&&!e.repeat){paused=!paused;render();}if(e.code==='KeyR')rotation=(rotation+1)%4;if(e.code==='KeyF'){pan={x:0,z:0};yaw=.65;}if(e.code==='F5'){e.preventDefault();save(true);}keys.add(e.code);});addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());
   document.addEventListener('visibilitychange',()=>{keys.clear();if(document.hidden)save();lastFrame=0;});addEventListener('pagehide',()=>save());
 }
-function frame(now){const dt=lastFrame?Math.min((now-lastFrame)/1000,.1):0;lastFrame=now;if(!document.hidden){update(dt);draw();uiClock+=dt;if(uiClock>.15){uiClock=0;renderRecipes();renderVisitors();renderJourney();if($('#food-dialog').open)renderVendor();}}requestAnimationFrame(frame);}
+function frame(now){const dt=lastFrame?Math.min((now-lastFrame)/1000,.1):0;lastFrame=now;if(!document.hidden){update(dt);draw();uiClock+=dt;if(uiClock>.15){uiClock=0;renderRecipes();renderVisitors();renderJourney();renderCompanion();if($('#food-dialog').open)renderVendor();if($('#dorm-dialog').open)renderDorm();}}requestAnimationFrame(frame);}
 async function start(){
   try{
     const [catalog,defs]=await Promise.all(['./data/catalog.json','./data/characters.json'].map(async path=>{const r=await fetch(path);if(!r.ok)throw Error('配置加载失败');return r.json();}));characters=defs;game=new Economy(catalog);
