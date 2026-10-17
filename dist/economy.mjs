@@ -92,7 +92,7 @@ export class Economy {
     }
     if(now<this.staminaAt)this.staminaAt=now;
     if(this.stamina<this.settings.max_stamina){const step=this.settings.stamina_regen_seconds*1000,n=Math.floor((now-this.staminaAt)/step);if(n>0){this.stamina=Math.min(this.settings.max_stamina,this.stamina+n);this.staminaAt=this.stamina===this.settings.max_stamina?now:this.staminaAt+n*step;dirty=true;}}
-    if(this.voyageUntil&&now>=this.voyageUntil){this.voyageUntil=0;dirty=true;this.onNotice('本次航行结束，奶娃已安全返航');}
+    if(this.voyageUntil&&now>=this.voyageUntil){this.voyageUntil=0;dirty=true;this.onNotice('本次航行结束，奶蛙已安全返航');}
     if(dirty)this.onChange();
   }
   beginVoyage(now=Date.now()){
@@ -100,9 +100,9 @@ export class Economy {
     if(this.stamina===this.settings.max_stamina)this.staminaAt=now;
     this.stamina-=this.settings.voyage_stamina_cost;this.voyageUntil=now+this.settings.voyage_seconds*1000;this.salvageUntil=0;this.onChange();return '';
   }
-  returnHome(){if(!this.atSea())return;this.voyageUntil=0;this.onChange();this.onNotice('奶娃已返航，本次航行不会退还体力');}
+  returnHome(){if(!this.atSea())return;this.voyageUntil=0;this.onChange();this.onNotice('奶蛙已返航，本次航行不会退还体力');}
   eatError(){if(this.stamina>=this.settings.max_stamina)return '体力已满，无需吃饭';if(this.count('pork_rice')<1)return '背包里没有猪脚饭';return '';}
-  eatFood(now=Date.now()){this.syncClock(now);const error=this.eatError();if(error)return error;const gain=Math.min(this.settings.food_stamina_restore,this.settings.max_stamina-this.stamina);this.inventory.pork_rice--;this.stamina+=gain;if(this.stamina===this.settings.max_stamina)this.staminaAt=now;this.onChange();this.onNotice(`奶娃吃了一份猪脚饭，体力 +${gain}`);return '';}
+  eatFood(now=Date.now()){this.syncClock(now);const error=this.eatError();if(error)return error;const gain=Math.min(this.settings.food_stamina_restore,this.settings.max_stamina-this.stamina);this.inventory.pork_rice--;this.stamina+=gain;if(this.stamina===this.settings.max_stamina)this.staminaAt=now;this.onChange();this.onNotice(`奶蛙吃了一份猪脚饭，体力 +${gain}`);return '';}
   salvageError(now=Date.now()){if(!this.atSea())return '先出海再打捞';if(now<this.salvageUntil)return `打捞准备中 · ${Math.ceil((this.salvageUntil-now)/1000)} 秒`;if(this.rawTotal()>=this.capacity())return '原料仓已满，返航制作或扩建仓库吧';return '';}
   companionXpNeeded(level=this.companion.level){const c=this.settings.companion;return c.xp_base+(level-1)*c.xp_step;}
   companionBonuses(level=this.companion.level){const c=this.settings.companion;return {quantity:level*c.quantity_percent,fine:c.fine_base+level*c.fine_step,rare:c.rare_base+level*c.rare_step};}

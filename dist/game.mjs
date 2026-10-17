@@ -18,7 +18,7 @@ function renderGuide(){
   const current=stage();if(current!==lastStage){selectedGuide=['start','grow'].includes(current)?'renbo':'chaorui';lastStage=current;}
   const guide=characters.guides.find(g=>g.id===selectedGuide);$('#guide-image').src=guide.image;$('#guide-image').alt=guide.name;
   $('#guide-name').textContent=`${guide.name} / ${guide.role}`;$('#guide-line').textContent=guide.lines[current];
-  if(game.atSea()){$('#guide-name').textContent=`${guide.name} / 海上打捞`;$('#guide-line').textContent='奶娃，点击「随机打捞」收集物资，每次结果都不同。偶尔漂来的物资也能直接拾取。航行结束会自动返航。';}
+  if(game.atSea()){$('#guide-name').textContent=`${guide.name} / 海上打捞`;$('#guide-line').textContent='奶蛙，点击「随机打捞」收集物资，每次结果都不同。偶尔漂来的物资也能直接拾取。航行结束会自动返航。';}
   $$('[data-guide]').forEach(b=>b.classList.toggle('active',b.dataset.guide===selectedGuide));
 }
 function renderRecipes(){
@@ -48,7 +48,7 @@ function renderVisitors(){
 }
 function renderVendor(){
   const vendor=game.vendors.food_supplier;$('#food-vendor-name').textContent=vendor.name;$('#food-description').textContent=vendor.description;
-  $('#food-wallet').textContent=`奶娃的金币：${game.coins}　·　食堂营业中`;
+  $('#food-wallet').textContent=`奶蛙的金币：${game.coins}　·　食堂营业中`;
   if(game.atSea())$('#food-wallet').textContent=`出海途中 · 体力 ${game.stamina} / ${game.settings.max_stamina}`;
   const eatError=game.eatError();$('#eat-food').disabled=Boolean(eatError);$('#eat-food').textContent=eatError||`吃一份猪脚饭 · 体力 +${game.settings.food_stamina_restore}`;
   $('#food-count').textContent=game.count('pork_rice');
@@ -78,7 +78,7 @@ function renderCompanion(){
   $('#companion-desktop').textContent=`樾 Lv.${c.level} · ${state}`;
   $('#companion-brief').textContent=c.equipped?`数量 +${b.quantity}% · 精良 ${b.fine}% · 稀有 ${b.rare}%`:game.housing.dorm?'正在宿舍缓慢成长 · 离线有效':'出战提升打捞，住宿则自动成长';
   $('#companion-level').textContent=`Lv.${c.level}`;
-  $('#companion-status').textContent=game.atSea()?(c.equipped?'樾正在陪同奶娃出海。返航后可调整。':game.housing.dorm?'樾留在宿舍成长，奶娃本次独自出海。':'樾在岛上休息，返航后可邀请同行。'):(c.equipped?'已准备同行，下次出海自动陪同奶娃。':game.housing.dorm?'樾已入住宿舍，离线期间也会继续成长。':'正在岛上休息，可选择出战或入住宿舍。');
+  $('#companion-status').textContent=game.atSea()?(c.equipped?'樾正在陪同奶蛙出海。返航后可调整。':game.housing.dorm?'樾留在宿舍成长，奶蛙本次独自出海。':'樾在岛上休息，返航后可邀请同行。'):(c.equipped?'已准备同行，下次出海自动陪同奶蛙。':game.housing.dorm?'樾已入住宿舍，离线期间也会继续成长。':'正在岛上休息，可选择出战或入住宿舍。');
   $('#companion-bonus').textContent=`平均打捞数量 +${b.quantity}%`;
   $('#companion-quality').textContent=`精良概率 ${b.fine}% · 稀有概率 ${b.rare}%`;
   $('#companion-xp').textContent=max?'已满级':`经验 ${c.xp} / ${needed} · 还需 ${needed-c.xp} 次成功打捞升级`;
@@ -145,10 +145,10 @@ function setupUI(){
   $('#dorm-room').onchange=renderDorm;
   $('#dorm-action').onclick=()=>{const error=game.housing.dorm===$('#dorm-room').value?game.unhouseCompanion():game.houseCompanion($('#dorm-room').value);if(error)notify(error);else save();};
   $('#eat-food').onclick=()=>{const error=game.eatFood();if(error)notify(error);else save();};
-  $('#voyage-button').onclick=()=>{if(paused)return;if(game.atSea()){game.returnHome();}else{mode='collect';selectMode('collect');const error=game.beginVoyage();notify(error||'奶娃出海了！体力 -1，本次航行 60 秒');}save();};
+  $('#voyage-button').onclick=()=>{if(paused)return;if(game.atSea()){game.returnHome();}else{mode='collect';selectMode('collect');const error=game.beginVoyage();notify(error||'奶蛙出海了！体力 -1，本次航行 60 秒');}save();};
   $('#salvage-button').onclick=()=>{if(paused)return;const level=game.companion.level,result=game.salvage();notify(result.error||`随机打捞：${game.items[result.item].name} +${result.amount}${game.companion.level>level?` · 樾升到 Lv.${game.companion.level}！`:''}`);if(!result.error)save();};
   $('#pause').onclick=()=>{paused=!paused;render();};$('#save').onclick=()=>save(true);$('#new').onclick=()=>openDialog('#new-dialog');$('#cancel-new').onclick=()=>closeDialog('#new-dialog');
-  $('#confirm-new').onclick=()=>{game.reset();hero={x:0,z:0,cell:'0,0',path:[],flip:false};saveBlocked=false;resources=[];boats.clear();for(let i=0;i<19;i++)spawnResource();lastStage='';pan={x:0,z:0};mode='collect';dialogPreviousPause=false;closeDialog('#new-dialog');selectMode('collect');save();notify('奶娃的新航程开始了');};
+  $('#confirm-new').onclick=()=>{game.reset();hero={x:0,z:0,cell:'0,0',path:[],flip:false};saveBlocked=false;resources=[];boats.clear();for(let i=0;i<19;i++)spawnResource();lastStage='';pan={x:0,z:0};mode='collect';dialogPreviousPause=false;closeDialog('#new-dialog');selectMode('collect');save();notify('奶蛙的新航程开始了');};
   $('#backup').onclick=()=>{let data;try{data=saveBlocked?localStorage.getItem(STORE):JSON.stringify(game.snapshot(),null,2);}catch{}const url=URL.createObjectURL(new Blob([data||JSON.stringify(game.snapshot(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='潮汐集市-存档.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   for(const id of ['#food-dialog','#new-dialog','#companion-dialog','#dorm-dialog'])$(id).addEventListener('cancel',event=>{event.preventDefault();closeDialog(id);});
 }
@@ -255,14 +255,14 @@ function draw(){
   drawWater();
   if(game.atSea()){
     resources.slice().sort((a,b)=>project(a.x,a.z).y-project(b.x,b.z).y).forEach(drawResource);
-    drawBoat({x:0,z:0,color:'e5b45f'});if(game.companion.equipped)sprite(images.yue,-.65,-.1,1.25,.5+Math.sin(time*2)*.04);sprite(images.naiwa,.25,.4,1.4,.3+Math.sin(time*2)*.04);textAt(game.companion.equipped?`奶娃 & 樾 Lv.${game.companion.level}`:'奶娃 · 出海中',0,0,2.1,'#fff1c5',w<=860?11:13);return;
+    drawBoat({x:0,z:0,color:'e5b45f'});if(game.companion.equipped)sprite(images.yue,-.65,-.1,1.25,.5+Math.sin(time*2)*.04);sprite(images.naiwa,.25,.4,1.4,.3+Math.sin(time*2)*.04);textAt(game.companion.equipped?`奶蛙 & 樾 Lv.${game.companion.level}`:'奶蛙 · 出海中',0,0,2.1,'#fff1c5',w<=860?11:13);return;
   }
   const tiles=[...game.tiles].sort((a,b)=>{const[x,z]=cell(a),[xx,zz]=cell(b);return project(x,z).y-project(xx,zz).y;});for(const k of tiles)drawTile(k);drawConstruction();
   const entities=resources.map(r=>({depth:project(r.x,r.z).y,draw:()=>drawResource(r)}));
   for(const[k,b]of Object.entries(game.structures)){const[x,z]=cell(k).map(n=>n*TILE);entities.push({depth:project(x,z).y,draw:()=>drawBuilding(k,b)});}
   const vendor=game.reservedCell();if(vendor){const[x,z]=cell(vendor).map(n=>n*TILE);entities.push({depth:project(x,z+.2).y,draw:drawVendor});}
   const worker=workerPose();entities.push({depth:project(worker.x,worker.z).y,draw:drawWorker});
-  entities.push({depth:project(hero.x,hero.z).y,draw:()=>{ellipse(hero.x,hero.z,.31,.23,'#8a704550',.235);sprite(images.naiwa,hero.x,hero.z,characters.hero.world_height,.24+Math.sin(time*(hero.path.length?11:2))*(hero.path.length?.06:.012),hero.flip);textAt('奶娃',hero.x,hero.z,2.25,'#fff2bf',w<=860?10:11);}});
+  entities.push({depth:project(hero.x,hero.z).y,draw:()=>{ellipse(hero.x,hero.z,.31,.23,'#8a704550',.235);sprite(images.naiwa,hero.x,hero.z,characters.hero.world_height,.24+Math.sin(time*(hero.path.length?11:2))*(hero.path.length?.06:.012),hero.flip);textAt('奶蛙',hero.x,hero.z,2.25,'#fff2bf',w<=860?10:11);}});
   for(const boat of boats.values())entities.push({depth:project(boat.x,boat.z).y,draw:()=>drawBoat(boat)});
   entities.sort((a,b)=>a.depth-b.depth);entities.forEach(e=>e.draw());drawPreview();
   // One simple pennant identifies the home island from a distance.
@@ -281,9 +281,9 @@ function update(dt){
 function resourceAt(x,y){let found=null,distance=Math.max(20,scale()*.48);for(const r of resources){const p=project(r.x,r.z,.14),d=Math.hypot(p.x-x,p.y-y);if(d<distance){found=r;distance=d;}}return found;}
 function clickWorld(x,y){
   if(paused)return;
-  if(game.atSea()){const r=resourceAt(x,y);if(r){const n=game.collect(r.id,r.amount);if(n){r.amount-=n;if(!r.amount)resources.splice(resources.indexOf(r),1);notify(`奶娃打捞到 ${game.items[r.id].name} +${n}`);}}return;}
+  if(game.atSea()){const r=resourceAt(x,y);if(r){const n=game.collect(r.id,r.amount);if(n){r.amount-=n;if(!r.amount)resources.splice(resources.indexOf(r),1);notify(`奶蛙打捞到 ${game.items[r.id].name} +${n}`);}}return;}
   const vendor=game.reservedCell();if(vendor){const[a,b]=cell(vendor).map(n=>n*TILE),p=project(a,b,.8);if(Math.hypot(x-p.x,y-p.y)<Math.max(24,scale()*.75)){openDialog('#food-dialog');return;}}
-  const r=resourceAt(x,y);if(r){const n=game.collect(r.id,r.amount);if(n){r.amount-=n;if(!r.amount)resources.splice(resources.indexOf(r),1);notify(`奶娃打捞到 ${game.items[r.id].name} +${n}`);}return;}
+  const r=resourceAt(x,y);if(r){const n=game.collect(r.id,r.amount);if(n){r.amount-=n;if(!r.amount)resources.splice(resources.indexOf(r),1);notify(`奶蛙打捞到 ${game.items[r.id].name} +${n}`);}return;}
   const p=unproject(x,y),k=key(Math.round(p.x/TILE),Math.round(p.z/TILE));
   if(mode!=='collect'){const built=mode,error=game.build(built,k,rotation);notify(error||(built==='expand'?'便已接下扩建，正在施工…':`${game.buildings[built].name}已建好`));if(!error){save();if(built==='dormitory'){selectMode('collect');openDialog('#dorm-dialog');}}return;}
   if(game.structures[k]?.id==='dormitory'){openDialog('#dorm-dialog');return;}
