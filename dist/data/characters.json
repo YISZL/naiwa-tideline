@@ -90,5 +90,14 @@
       "image": "./assets/pink-frog.webp",
       "world_height": 1.1
     }
+  ],
+  "couriers": [
+    {
+      "id": "feidudu",
+      "name": "肥嘟嘟",
+      "role": "物资配送员",
+      "image": "./assets/feidudu.webp",
+      "world_height": 1.25
+    }
   ]
 }

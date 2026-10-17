@@ -24,3 +24,9 @@ Use case: background-extraction / identity-preserve. Asset type: transparent 2D 
 
 提示词摘要：保留粉色圆润角色、绿色大眼睛、粉色猫耳针织帽和坐姿，去除泳池、瓷砖、水面与其他背景，只保留角色全身并输出真实透明背景；不添加文字、道具或其他人物。
 
+## 肥嘟嘟透明立绘
+
+`dist/assets/feidudu.webp` 使用内置 ImageGen 根据用户提供的黄色外卖员角色参考图制作。透明 PNG 源文件位于 `C:/Users/wzl/.codex/generated_images/01a14943-3321-72e3-92a5-89d7ea4d3beb/exec-e70df371-a6f0-45f9-8ea7-15dcbcc1dacc.png`，发布版本清理零散透明像素后缩放为最长边 640 像素的 WebP（质量 70）。
+
+提示词摘要：保留黄色四足身体、黑色头部、圆眼、红鼻子、长耳朵、背带和黄色配送箱，移除白色背景及箱体品牌文字，保持原有可爱简化 3D 吉祥物比例，输出透明背景完整角色。
+

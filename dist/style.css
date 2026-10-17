@@ -56,3 +56,29 @@ dialog{border:0;border-radius:22px;background:var(--cream);color:var(--ink);padd
 @media(max-width:1200px) and (min-width:861px){.status-hint{width:240px}.resource.stamina{min-width:90px}.resource.stamina span{font-size:8px}}
 @media(max-height:760px) and (min-width:861px){.status-hint{top:106px}.craft-panel{top:158px}}
 @media(max-width:860px){.resource.stamina{min-width:42px;text-align:right}.resource.stamina span{font-size:7px;max-width:62px;white-space:normal;line-height:1.15}.status-hint{left:10px;right:auto;top:217px;bottom:auto;width:150px;padding:6px}.status-hint .voyage-actions button{font-size:11px;padding:8px 6px}.craft-panel{top:auto}.companion-card{top:270px}.guide{padding-right:34px}.guide-close{right:4px;top:4px}}
+
+.guide-tabs #feidudu-desktop{color:#ffe589;background:#675d31;white-space:nowrap}
+.delivery-dialog[open]{width:860px;grid-template-columns:260px 1fr;max-height:92vh}
+.delivery-dialog .food-portrait{background:linear-gradient(155deg,#ffe985,#d7aa36)}
+.delivery-dialog .food-portrait img{height:auto;max-height:390px;object-fit:contain}
+.delivery-dialog .food-content{overflow:auto}
+.delivery-lines{display:flex;flex-direction:column;gap:8px}
+.delivery-line{display:grid;grid-template-columns:minmax(145px,1fr) 92px 92px;align-items:end;gap:8px;background:#eeead8;border:1px solid #ded6bd;border-radius:12px;padding:10px}
+.delivery-line>div{align-self:center}.delivery-line strong{display:block;font-size:14px}.delivery-line small{display:block;font-size:9px;margin-top:3px}
+.delivery-line label{font-size:9px;color:var(--muted)}
+.delivery-line input{display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #c9cdbd;border-radius:8px;background:#fffaf0;color:var(--ink);font:inherit;font-size:12px}
+.delivery-summary{background:#e5ecdf;border-radius:11px;padding:11px;color:#64766f;font-size:11px;line-height:1.6}
+#delivery-submit{width:100%}
+.delivery-progress{background:#ebe8d4;border:1px solid #d8cfaa;border-radius:15px;padding:18px}
+.delivery-progress>strong{display:block;color:#826224;font-size:17px;margin-bottom:7px}
+.delivery-progress>p{font-size:11px;color:var(--muted);line-height:1.7;margin-top:8px}
+#delivery-wallet{font-size:11px;color:#8b6a31}
+@media(max-width:860px){
+  .guide-tabs #feidudu-desktop{font-size:9px;padding:5px 7px}
+  .delivery-dialog[open]{grid-template-columns:105px 1fr;width:calc(100% - 20px)}
+  .delivery-dialog .food-portrait img{position:static;width:100%;height:auto;max-height:none}
+  .delivery-dialog .food-content{padding:27px 12px 16px;gap:8px}
+  .delivery-line{grid-template-columns:1fr 70px 70px;padding:8px;gap:6px}
+  .delivery-line strong{font-size:12px}.delivery-line small{font-size:8px}
+  .delivery-line input{padding:7px 5px}
+}

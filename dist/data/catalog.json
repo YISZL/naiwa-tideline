@@ -453,6 +453,28 @@
           "implemented": false
         }
       ]
+    },
+    "delivery_trader": {
+      "name": "肥嘟嘟",
+      "delivery_min_seconds": 180,
+      "delivery_max_seconds": 300,
+      "items": [
+        {
+          "item": "wood",
+          "buy_price": 6,
+          "sell_price": 3
+        },
+        {
+          "item": "scrap",
+          "buy_price": 10,
+          "sell_price": 5
+        },
+        {
+          "item": "cloth",
+          "buy_price": 10,
+          "sell_price": 5
+        }
+      ]
     }
   }
 }
