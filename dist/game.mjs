@@ -38,6 +38,7 @@ function renderRecipes(){
   $('#workshop-status').textContent=game.has('workshop')?'可制作':'待建造';
   $('#queue').textContent=`制作队列 ${game.queue.length} / ${game.settings.queue_limit}`+(game.queue.length?'\n'+game.queue.map(t=>game.items[game.recipes[t.recipe].output].name).join(' → '):'');
   $('#capacity').textContent=`原料仓 ${game.rawCommittedTotal()} / ${game.capacity()}${game.deliveryReservedRaw()?`（配送预留 ${game.deliveryReservedRaw()}）`:''} · 浮岛 ${game.tiles.size} 格`+(game.construction?`\n便正在扩建 · ${Math.ceil(game.construction.remaining)} 秒`:'\n便 · 负责浮岛扩建');
+  $('#warehouse-policy-summary').textContent=game.settings.delivery_trader.items.map(row=>{const p=game.warehousePolicies[row.item];return `${game.items[row.item].name} ${p.min}～${p.max===null?'不限':p.max}`;}).join(' · ');
   updateHint();
 }
 function renderVisitors(){
@@ -75,7 +76,7 @@ function renderWanderer(){
 function deliveryDetail(plan){return game.settings.delivery_trader.items.filter(row=>plan[row.item]>0).map(row=>`${game.items[row.item].name} ×${plan[row.item]}`).join(' · ')||'无';}
 function renderDelivery(){
   const task=game.deliveryTask,form=$('#delivery-form'),progress=$('#delivery-progress');form.hidden=Boolean(task);progress.hidden=!task;$('#delivery-wallet').textContent=`奶蛙的金币：${game.coins} · 原料仓 ${game.rawCommittedTotal()} / ${game.capacity()}（含配送预留）`;
-  if(task){const left=game.deliverySecondsRemaining(),elapsed=Math.max(0,task.duration-left);$('#delivery-countdown').textContent=`预计 ${formatClock(left)} 后完成`;$('#delivery-progress-bar').style.width=`${Math.min(100,elapsed/task.duration*100)}%`;$('#delivery-order-detail').textContent=`购买：${deliveryDetail(task.buy)}　售卖：${deliveryDetail(task.sell)}${task.coinPayout?`　配送完成到账 ${task.coinPayout} 金币`:task.coinCharge?`　已支付 ${task.coinCharge} 金币`:'　金币正好抵扣'}`;return;}
+  if(task){const left=game.deliverySecondsRemaining(),elapsed=Math.max(0,task.duration-left);$('#delivery-countdown').textContent=`${task.automatic?'仓库超量自动售卖 · ':''}预计 ${formatClock(left)} 后完成`;$('#delivery-progress-bar').style.width=`${Math.min(100,elapsed/task.duration*100)}%`;$('#delivery-order-detail').textContent=`购买：${deliveryDetail(task.buy)}　售卖：${deliveryDetail(task.sell)}${task.coinPayout?`　配送完成到账 ${task.coinPayout} 金币`:task.coinCharge?`　已支付 ${task.coinCharge} 金币`:'　金币正好抵扣'}`;return;}
   for(const row of game.settings.delivery_trader.items){const buy=$(`[data-delivery-buy="${row.item}"]`),sell=$(`[data-delivery-sell="${row.item}"]`),owned=$(`[data-delivery-owned="${row.item}"]`);if(owned)owned.textContent=`持有 ${game.count(row.item)} · 买 ${row.buy_price} 金 / 卖 ${row.sell_price} 金`;if(buy)buy.value=deliveryDraft.buy[row.item]||0;if(sell){sell.value=deliveryDraft.sell[row.item]||0;sell.max=game.count(row.item);}}
   const summary=game.deliverySummary(deliveryDraft.buy,deliveryDraft.sell),error=game.deliveryTradeError(deliveryDraft.buy,deliveryDraft.sell),settlement=summary.coinCharge?`需支付 ${summary.coinCharge} 金币`:summary.coinPayout?`完成后到账 ${summary.coinPayout} 金币`:'无需金币结算';$('#delivery-summary').textContent=`购买 ${summary.buyTotal} 份（${summary.buyCost} 金） · 售卖 ${summary.sellTotal} 份（${summary.sellRevenue} 金） · ${settlement}`;const button=$('#delivery-submit');button.disabled=Boolean(error);button.textContent=error||'确认配送任务';
 }
@@ -91,7 +92,7 @@ function renderRecruitment(){
   const makerButton=$('#hire-haozi');makerButton.disabled=Boolean(makerError);makerButton.textContent=makerError||`招募豪自 · ${maker.price} 金币`;
   const zihaoPause=$('#pause-zihao');zihaoPause.disabled=!count;zihaoPause.textContent=zihaoPaused?'恢复工作':'停止工作';zihaoPause.classList.toggle('resume',zihaoPaused);
   const haoziPause=$('#pause-haozi');haoziPause.disabled=!makerCount;haoziPause.textContent=haoziPaused?'恢复工作':'停止工作';haoziPause.classList.toggle('resume',haoziPaused);
-  const total=count+makerCount,active=working+makerWorking,mealTimes=['zihao','haozi'].map(id=>game.employeeMealSecondsRemaining(id)).filter(Boolean);$('#employee-meal-status').textContent=total?`员工口粮：猪脚饭 ${game.count('pork_rice')} 份 · 工作 ${active}/${total}${mealTimes.length?` · 下一次用餐 ${formatClock(Math.min(...mealTimes))}`:''}`:'尚未招募员工；招募后前 20 分钟无需消耗口粮。';
+  const total=count+makerCount,active=working+makerWorking,mealTimes=['zihao','haozi'].map(id=>game.employeeMealSecondsRemaining(id)).filter(Boolean);$('#employee-meal-status').textContent=total?`员工口粮：猪脚饭 ${game.count('pork_rice')} 份 · 工作 ${active}/${total}${mealTimes.length?` · 下一次用餐 ${formatClock(Math.min(...mealTimes))}`:''} · 金币充足时自动续饭`:'尚未招募员工；招募后前 20 分钟无需消耗口粮。';
 }
 function renderQuestBoard(id){
   const board=game.questBoard(id),container=$(`#${id}-quests`),owner=id==='renbo'?'仁博':'晁瑞';
@@ -180,6 +181,7 @@ function setupUI(){
   $$('[data-mode]').forEach(b=>b.onclick=()=>selectMode(b.dataset.mode));
   deliveryDraft={buy:{},sell:{}};$('#delivery-lines').innerHTML=game.settings.delivery_trader.items.map(row=>{deliveryDraft.buy[row.item]=0;deliveryDraft.sell[row.item]=0;return `<article class="delivery-line"><div><strong>${escape(game.items[row.item].name)}</strong><small data-delivery-owned="${escape(row.item)}">持有 ${game.count(row.item)} · 买 ${row.buy_price} 金 / 卖 ${row.sell_price} 金</small></div><label>购买<input type="number" min="0" step="1" inputmode="numeric" data-delivery-buy="${escape(row.item)}" value="0"></label><label>售卖<input type="number" min="0" step="1" inputmode="numeric" data-delivery-sell="${escape(row.item)}" value="0"></label></article>`;}).join('');
   $$('[data-delivery-buy],[data-delivery-sell]').forEach(input=>input.oninput=()=>{const id=input.dataset.deliveryBuy||input.dataset.deliverySell,type=input.dataset.deliveryBuy?'buy':'sell',value=Number(input.value);deliveryDraft[type][id]=Number.isSafeInteger(value)&&value>=0?value:0;renderDelivery();});
+  $('#warehouse-policy-lines').innerHTML=game.settings.delivery_trader.items.map(row=>`<article class="warehouse-policy-line"><strong>${escape(game.items[row.item].name)}</strong><label>保底<input type="number" min="0" step="1" inputmode="numeric" data-policy-min="${escape(row.item)}"></label><label>上限<input type="number" min="0" step="1" inputmode="numeric" placeholder="不限" data-policy-max="${escape(row.item)}"></label></article>`).join('');
   $('#decorate-toggle').onclick=toggleBuildMenu;
   $('#guide-toggle').onclick=()=>{guideCollapsed=!guideCollapsed;renderGuide();};
   $('#guide-close').onclick=()=>{guideCollapsed=true;renderGuide();};
@@ -198,6 +200,9 @@ function setupUI(){
   $('#wanderer-close').onclick=()=>closeDialog('#wanderer-dialog');
   $('#delivery-close').onclick=()=>closeDialog('#delivery-dialog');
   $('#delivery-submit').onclick=()=>{const error=game.submitDeliveryTrade(deliveryDraft.buy,deliveryDraft.sell);if(error)notify(error);else{deliveryDraft={buy:Object.fromEntries(game.settings.delivery_trader.items.map(row=>[row.item,0])),sell:Object.fromEntries(game.settings.delivery_trader.items.map(row=>[row.item,0]))};renderDelivery();save();}};
+  $('#warehouse-policy-open').onclick=()=>{for(const row of game.settings.delivery_trader.items){const policy=game.warehousePolicies[row.item];$(`[data-policy-min="${row.item}"]`).value=policy.min;$(`[data-policy-max="${row.item}"]`).value=policy.max??'';}setSheet('none');openDialog('#warehouse-policy-dialog');};
+  $('#warehouse-policy-close').onclick=()=>closeDialog('#warehouse-policy-dialog');
+  $('#warehouse-policy-save').onclick=()=>{const policies={};for(const row of game.settings.delivery_trader.items){const min=Number($(`[data-policy-min="${row.item}"]`).value),raw=$(`[data-policy-max="${row.item}"]`).value.trim(),max=raw===''?null:Number(raw);policies[row.item]={min,max};}const error=game.setWarehousePolicies(policies);if(error)notify(error);else{closeDialog('#warehouse-policy-dialog');save();}};
   $('#hire-zihao').onclick=()=>{const error=game.hireEmployee('zihao');if(error)notify(error);else{renderRecruitment();save();}};
   $('#hire-haozi').onclick=()=>{const error=game.hireEmployee('haozi');if(error)notify(error);else{renderRecruitment();save();}};
   $('#pause-zihao').onclick=()=>{const error=game.setEmployeePaused('zihao',!game.employeePaused.zihao);if(error)notify(error);else{renderRecruitment();save();}};
@@ -223,7 +228,7 @@ function setupUI(){
   $('#pause').onclick=()=>{paused=!paused;render();};$('#save').onclick=()=>save(true);$('#new').onclick=()=>openDialog('#new-dialog');$('#cancel-new').onclick=()=>closeDialog('#new-dialog');
   $('#confirm-new').onclick=()=>{game.reset();deliveryDraft={buy:Object.fromEntries(game.settings.delivery_trader.items.map(row=>[row.item,0])),sell:Object.fromEntries(game.settings.delivery_trader.items.map(row=>[row.item,0]))};hero={x:0,z:0,cell:'0,0',path:[],flip:false};saveBlocked=false;resources=[];boats.clear();for(let i=0;i<19;i++)spawnResource();lastStage='';pan={x:0,z:0};mode='collect';buildMenuOpen=false;dialogPreviousPause=false;closeDialog('#new-dialog');selectMode('collect');save();notify('奶蛙的新航程开始了');};
   $('#backup').onclick=()=>{let data;try{data=saveBlocked?localStorage.getItem(STORE):JSON.stringify(game.snapshot(),null,2);}catch{}const url=URL.createObjectURL(new Blob([data||JSON.stringify(game.snapshot(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='潮汐集市-存档.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-  for(const id of ['#food-dialog','#recruit-dialog','#wanderer-dialog','#delivery-dialog','#renbo-task-dialog','#chaorui-task-dialog','#new-dialog','#companion-dialog','#dorm-dialog'])$(id).addEventListener('cancel',event=>{event.preventDefault();closeDialog(id);});
+  for(const id of ['#food-dialog','#recruit-dialog','#wanderer-dialog','#delivery-dialog','#warehouse-policy-dialog','#renbo-task-dialog','#chaorui-task-dialog','#new-dialog','#companion-dialog','#dorm-dialog'])$(id).addEventListener('cancel',event=>{event.preventDefault();closeDialog(id);});
 }
 
 function resize(){w=innerWidth;h=innerHeight;dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);}

@@ -82,3 +82,14 @@ dialog{border:0;border-radius:22px;background:var(--cream);color:var(--ink);padd
   .delivery-line strong{font-size:12px}.delivery-line small{font-size:8px}
   .delivery-line input{padding:7px 5px}
 }
+.panel-heading .mini-action{font-size:9px;padding:6px 8px;background:#e3e5d8;white-space:nowrap}
+.warehouse-policy-dialog{width:560px}
+.warehouse-policy-dialog>p{margin-bottom:14px}
+.warehouse-policy-lines{display:flex;flex-direction:column;gap:8px;margin:16px 0}
+.warehouse-policy-line{display:grid;grid-template-columns:1fr 105px 105px;align-items:end;gap:8px;padding:10px 12px;border-radius:11px;background:#ecebdd}
+.warehouse-policy-line strong{align-self:center;font-size:14px}
+.warehouse-policy-line label{font-size:9px;color:var(--muted)}
+.warehouse-policy-line input{display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #c9cdbd;border-radius:8px;background:#fffaf0;color:var(--ink);font:inherit;font-size:12px}
+#warehouse-policy-save{width:100%;margin-top:12px}
+#warehouse-policy-summary{color:#708780}
+@media(max-width:860px){.panel-heading .mini-action{padding:5px 6px}.warehouse-policy-dialog{padding:25px 16px}.warehouse-policy-line{grid-template-columns:1fr 78px 78px;padding:8px}.warehouse-policy-line input{padding:7px 5px}}

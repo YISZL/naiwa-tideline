@@ -33,6 +33,7 @@ export class Economy {
     this.employeePausedAt={zihao:0,haozi:0};
     this.wanderer=null;this.wandererClock=0;
     this.deliveryTask=null;
+    this.warehousePolicies=Object.fromEntries(this.settings.delivery_trader.items.map(row=>[row.item,{min:0,max:null}]));
     this.questStats={voyages:0,salvages:0,gathered:0,expanded:0,built:0,crafted:0};
     this.questBoards={renbo:{refreshedAt:0,serial:0,tasks:[]},chaorui:{refreshedAt:0,serial:0,tasks:[]}};
     this.construction=null;
@@ -87,6 +88,13 @@ export class Economy {
   }
   purchaseError(vendorId,index=0){const offer=this.vendors[vendorId]?.offers[index];if(!offer)return '商品不存在';if(this.atSea())return '返航后购买';if(this.coins<offer.price)return '金币不足，先完成一些订单吧';if(!this.has('workshop')&&this.coins-offer.price<this.buildings.workshop.coins)return '先留够建造加工台的金币，再来买饭吧';if(this.items[offer.item].kind==='resource'&&this.rawCommittedTotal()+offer.quantity>this.capacity())return '原料仓容量不足';return '';}
   buy(vendorId,index=0){const error=this.purchaseError(vendorId,index);if(error)return error;const offer=this.vendors[vendorId].offers[index];this.coins-=offer.price;this.inventory[offer.item]=this.count(offer.item)+offer.quantity;this.onChange();this.onNotice(`购买成功：${this.items[offer.item].name} +${offer.quantity}`);return '';}
+  warehouseFloor(id){return this.warehousePolicies[id]?.min||0;}
+  employeeAvailable(id){return Math.max(0,this.count(id)-this.warehouseFloor(id));}
+  employeeAfford(cost){return Object.entries(cost).every(([id,amount])=>this.employeeAvailable(id)>=amount);}
+  warehousePolicyError(policies){
+    const allowed=new Set(this.settings.delivery_trader.items.map(row=>row.item));if(!policies||typeof policies!=='object'||Array.isArray(policies)||Object.keys(policies).some(id=>!allowed.has(id)))return '仓库策略无效';for(const id of allowed){const policy=policies[id];if(!policy||!nonnegative(policy.min)||(policy.max!==null&&!nonnegative(policy.max))||(policy.max!==null&&policy.max<policy.min))return `${this.items[id].name}的底线或上限无效`;}return '';
+  }
+  setWarehousePolicies(policies,now=Date.now(),rng=Math.random){const error=this.warehousePolicyError(policies);if(error)return error;this.syncDelivery(now);this.warehousePolicies=structuredClone(policies);const started=this.syncWarehouseAutoSell(now,rng);this.onChange();if(!started)this.onNotice('仓库策略已保存');return '';}
   deliverySummary(buy={},sell={}){
     const config=this.settings.delivery_trader,lines=config.items,buyCost=lines.reduce((n,row)=>n+(buy[row.item]||0)*row.buy_price,0),sellRevenue=lines.reduce((n,row)=>n+(sell[row.item]||0)*row.sell_price,0),buyTotal=lines.reduce((n,row)=>n+(buy[row.item]||0),0),sellTotal=lines.reduce((n,row)=>n+(sell[row.item]||0),0);
     return {buyCost,sellRevenue,buyTotal,sellTotal,coinCharge:Math.max(0,buyCost-sellRevenue),coinPayout:Math.max(0,sellRevenue-buyCost)};
@@ -97,14 +105,13 @@ export class Economy {
     const summary=this.deliverySummary(buy,sell);if(!summary.buyTotal&&!summary.sellTotal)return '请先填写购买或售卖数量';for(const row of config.items)if((sell[row.item]||0)>this.count(row.item))return `${this.items[row.item].name}库存不足`;if(this.coins<summary.coinCharge)return `金币不足，还需要 ${summary.coinCharge-this.coins} 金币`;
     if(this.rawCommittedTotal()-summary.sellTotal+summary.buyTotal>this.capacity())return '配送完成后会超过原料仓容量';return '';
   }
-  submitDeliveryTrade(buy={},sell={},now=Date.now(),rng=Math.random){
-    this.syncClock(now,rng);const error=this.deliveryTradeError(buy,sell);if(error)return error;const cleanBuy={},cleanSell={};for(const row of this.settings.delivery_trader.items){cleanBuy[row.item]=buy[row.item]||0;cleanSell[row.item]=sell[row.item]||0;this.inventory[row.item]-=cleanSell[row.item];}
-    const summary=this.deliverySummary(cleanBuy,cleanSell),min=this.settings.delivery_trader.delivery_min_seconds,max=this.settings.delivery_trader.delivery_max_seconds,duration=min+Math.floor(rng()*(max-min+1));this.coins-=summary.coinCharge;this.deliveryTask={buy:cleanBuy,sell:cleanSell,...summary,duration,completeAt:now+duration*1000};this.onChange();this.onNotice(`肥嘟嘟已接单，预计 ${Math.ceil(duration/60)} 分钟送达`);return '';
-  }
+  startDeliveryTrade(buy,sell,now,rng,automatic=false){const cleanBuy={},cleanSell={};for(const row of this.settings.delivery_trader.items){cleanBuy[row.item]=buy[row.item]||0;cleanSell[row.item]=sell[row.item]||0;this.inventory[row.item]-=cleanSell[row.item];}const summary=this.deliverySummary(cleanBuy,cleanSell),min=this.settings.delivery_trader.delivery_min_seconds,max=this.settings.delivery_trader.delivery_max_seconds,duration=min+Math.floor(rng()*(max-min+1));this.coins-=summary.coinCharge;this.deliveryTask={buy:cleanBuy,sell:cleanSell,...summary,duration,completeAt:now+duration*1000,automatic};return duration;}
+  submitDeliveryTrade(buy={},sell={},now=Date.now(),rng=Math.random){this.syncClock(now,rng);const error=this.deliveryTradeError(buy,sell);if(error)return error;const duration=this.startDeliveryTrade(buy,sell,now,rng,false);this.onChange();this.onNotice(`肥嘟嘟已接单，预计 ${Math.ceil(duration/60)} 分钟送达`);return '';}
   deliverySecondsRemaining(now=Date.now()){return this.deliveryTask?Math.max(0,Math.ceil((this.deliveryTask.completeAt-now)/1000)):0;}
   syncDelivery(now=Date.now()){
     const task=this.deliveryTask;if(!task||now<task.completeAt)return false;for(const[id,amount]of Object.entries(task.buy))this.inventory[id]=this.count(id)+amount;this.coins+=task.coinPayout;this.deliveryTask=null;this.onNotice(`肥嘟嘟配送完成${task.coinPayout?` · 金币 +${task.coinPayout}`:''}`);return true;
   }
+  syncWarehouseAutoSell(now=Date.now(),rng=Math.random){if(this.deliveryTask)return false;const sell={};for(const row of this.settings.delivery_trader.items){const max=this.warehousePolicies[row.item]?.max;sell[row.item]=max===null||max===undefined?0:Math.max(0,this.count(row.item)-max);}if(!Object.values(sell).some(Boolean))return false;const duration=this.startDeliveryTrade({},sell,now,rng,true);this.onNotice(`资源超过仓库上限，肥嘟嘟已自动接取售卖配送 · ${Math.ceil(duration/60)} 分钟`);return true;}
   employeeCount(id){return this.employees[id]?.length||0;}
   hireEmployeeError(id){const config=this.settings.employees?.[id];if(!config)return '员工不存在';if(this.atSea())return '返航后才能招募员工';if(this.employeeCount(id)>=config.max)return `${config.name}已达到招募上限`;if(this.coins<config.price)return `金币不足，还需要 ${config.price-this.coins} 金币`;return '';}
   hireEmployee(id,now=Date.now()){
@@ -123,17 +130,18 @@ export class Economy {
   }
   syncEmployeeMeal(id,index,now){
     const meals=this.employeeMeals[id],step=this.settings.employee_meal_seconds*1000,due=meals[index];
-    if(due===0){if(this.count('pork_rice')<1)return {activeUntil:0,dirty:false,resumed:false,stopped:false,ate:0};this.inventory.pork_rice--;meals[index]=now+step;return {activeUntil:now,dirty:true,resumed:true,stopped:false,ate:1};}
-    if(now<due)return {activeUntil:now,dirty:false,resumed:false,stopped:false,ate:0};
-    const needed=Math.floor((now-due)/step)+1,available=Math.min(needed,this.count('pork_rice'));this.inventory.pork_rice-=available;
-    if(available<needed){const activeUntil=Math.min(now,due+available*step);meals[index]=0;return {activeUntil,dirty:true,resumed:false,stopped:true,ate:available};}
-    meals[index]=due+available*step;return {activeUntil:now,dirty:true,resumed:false,stopped:false,ate:available};
+    const restock=needed=>{const offer=this.vendors.food_supplier?.offers.find(row=>row.item==='pork_rice');if(!offer)return 0;const missing=Math.max(0,needed-this.count('pork_rice')),bought=Math.min(missing,Math.floor(this.coins/offer.price));if(bought){this.coins-=bought*offer.price;this.inventory.pork_rice=this.count('pork_rice')+bought;}return bought;};
+    if(due===0){const bought=restock(1);if(this.count('pork_rice')<1)return {activeUntil:0,dirty:Boolean(bought),resumed:false,stopped:false,ate:0,bought};this.inventory.pork_rice--;meals[index]=now+step;return {activeUntil:now,dirty:true,resumed:true,stopped:false,ate:1,bought};}
+    if(now<due)return {activeUntil:now,dirty:false,resumed:false,stopped:false,ate:0,bought:0};
+    const needed=Math.floor((now-due)/step)+1,bought=restock(needed),available=Math.min(needed,this.count('pork_rice'));this.inventory.pork_rice-=available;
+    if(available<needed){const activeUntil=Math.min(now,due+available*step);meals[index]=0;return {activeUntil,dirty:true,resumed:false,stopped:true,ate:available,bought};}
+    meals[index]=due+available*step;return {activeUntil:now,dirty:true,resumed:false,stopped:false,ate:available,bought};
   }
   rollEmployeeLoot(rng=Math.random){const table=this.settings.salvage_loot,total=table.reduce((n,row)=>n+row.weight,0);let pick=rng()*total,loot=table.at(-1);for(const row of table){pick-=row.weight;if(pick<0){loot=row;break;}}return {item:loot.item,quantity:loot.min+Math.floor(rng()*(loot.max-loot.min+1))};}
   recipeForOrder(item,quantity,seen=new Set()){
-    if(this.count(item)>=quantity||seen.has(item))return null;const recipe=Object.values(this.recipes).find(row=>row.output===item);if(!recipe||this.reputation<recipe.reputation)return null;seen.add(item);
-    for(const [ingredient,needed]of Object.entries(recipe.cost)){if(this.count(ingredient)>=needed)continue;const nested=this.recipeForOrder(ingredient,needed,new Set(seen));if(nested)return nested;return null;}
-    return this.afford(recipe.cost)?recipe:null;
+    if(this.employeeAvailable(item)>=quantity||seen.has(item))return null;const recipe=Object.values(this.recipes).find(row=>row.output===item);if(!recipe||this.reputation<recipe.reputation)return null;seen.add(item);
+    for(const [ingredient,needed]of Object.entries(recipe.cost)){if(this.employeeAvailable(ingredient)>=needed)continue;const nested=this.recipeForOrder(ingredient,needed,new Set(seen));if(nested)return nested;return null;}
+    return this.employeeAfford(recipe.cost)?recipe:null;
   }
   autoTrade(slot){const index=this.visitors.findIndex(visitor=>visitor.slot===slot);if(index<0)return false;const visitor=this.visitors[index];if(visitor.age<2||this.count(visitor.item)<visitor.quantity)return false;this.inventory[visitor.item]-=visitor.quantity;this.coins+=visitor.reward;this.reputation++;this.trades++;this.visitors.splice(index,1);this.refreshQuests();this.onNotice(`豪自完成码头订单：金币 +${visitor.reward} · 声望 +1`);return true;}
   syncHaoziWorker(index,limit,now,reserved){
@@ -147,9 +155,9 @@ export class Economy {
     return dirty;
   }
   syncEmployees(now=Date.now(),rng=Math.random){
-    let dirty=false,returns=0,stored=0,overflow=false,ate=0,stopped=0,resumed=0;const rewards={},timers=this.employees.zihao||[],step=this.settings.employees.zihao.voyage_seconds*1000;
+    let dirty=false,returns=0,stored=0,overflow=false,ate=0,autoBought=0,stopped=0,resumed=0;const rewards={},timers=this.employees.zihao||[],step=this.settings.employees.zihao.voyage_seconds*1000;
     if(!this.employeePaused.zihao)for(let i=0;i<timers.length;i++){
-        const meal=this.syncEmployeeMeal('zihao',i,now);dirty=meal.dirty||dirty;ate+=meal.ate;stopped+=Number(meal.stopped);resumed+=Number(meal.resumed);if(meal.resumed)timers[i]=now+step;
+        const meal=this.syncEmployeeMeal('zihao',i,now);dirty=meal.dirty||dirty;ate+=meal.ate;autoBought+=meal.bought;stopped+=Number(meal.stopped);resumed+=Number(meal.resumed);if(meal.resumed)timers[i]=now+step;
         if(meal.activeUntil&&timers[i]<=meal.activeUntil){const trips=Math.floor((meal.activeUntil-timers[i])/step)+1;timers[i]+=trips*step;returns+=trips;dirty=true;
         for(let trip=0;trip<trips&&this.rawCommittedTotal()<this.capacity();trip++){
           const loot=this.rollEmployeeLoot(rng),amount=Math.min(loot.quantity,Math.max(0,this.capacity()-this.rawCommittedTotal()));
@@ -161,13 +169,13 @@ export class Economy {
     }
     const reserved=new Set(this.employeeJobs.haozi.filter(Boolean).map(job=>job.slot));
     if(!this.employeePaused.haozi)for(let i=0;i<this.employees.haozi.length;i++){
-      const meal=this.syncEmployeeMeal('haozi',i,now);dirty=meal.dirty||dirty;ate+=meal.ate;stopped+=Number(meal.stopped);resumed+=Number(meal.resumed);let job=this.employeeJobs.haozi[i];
+      const meal=this.syncEmployeeMeal('haozi',i,now);dirty=meal.dirty||dirty;ate+=meal.ate;autoBought+=meal.bought;stopped+=Number(meal.stopped);resumed+=Number(meal.resumed);let job=this.employeeJobs.haozi[i];
       if(meal.resumed&&job?.remaining){job.completeAt=now+job.remaining;job.remaining=0;dirty=true;}
       if(meal.activeUntil)dirty=this.syncHaoziWorker(i,meal.activeUntil,now,reserved)||dirty;job=this.employeeJobs.haozi[i];
       if(meal.stopped&&job?.completeAt>meal.activeUntil){job.remaining=job.completeAt-meal.activeUntil;job.completeAt=0;dirty=true;}
     }
     if(returns){const detail=Object.entries(rewards).map(([id,n])=>`${this.items[id].name} +${n}`).join(' · ');this.onNotice(stored?`自豪船队返航 ${returns} 次：${detail}${overflow?' · 仓库已满，部分物资未能入库':''}`:'自豪船队已返航，但原料仓已满');}
-    if(stopped)this.onNotice(`${stopped} 名员工因缺少猪脚饭停止工作`);else if(resumed)this.onNotice(`${resumed} 名员工吃过猪脚饭，恢复工作`);else if(ate)this.onNotice(`员工用餐：猪脚饭 -${ate}`);
+    const mealCost=this.vendors.food_supplier?.offers.find(row=>row.item==='pork_rice')?.price||0,restockNote=autoBought?` · 自动购买猪脚饭 ${autoBought} 份（-${autoBought*mealCost} 金币）`:'';if(stopped)this.onNotice(`${stopped} 名员工因金币和猪脚饭不足停止工作${restockNote}`);else if(resumed)this.onNotice(`${resumed} 名员工吃过猪脚饭，恢复工作${restockNote}`);else if(ate)this.onNotice(`员工用餐：猪脚饭 -${ate}${restockNote}`);
     return dirty;
   }
   introComplete(){return this.has('workshop')&&this.trades>0&&this.reputation>=3;}
@@ -225,7 +233,7 @@ export class Economy {
   }
   atSea(){return this.voyageUntil>0;}
   syncClock(now=Date.now(),rng=Math.random){
-    let dirty=this.syncDelivery(now);dirty=this.syncEmployees(now,rng)||dirty;dirty=this.refreshQuests(now,rng)||dirty;
+    let dirty=this.syncDelivery(now);dirty=this.syncEmployees(now,rng)||dirty;dirty=this.syncWarehouseAutoSell(now,rng)||dirty;dirty=this.refreshQuests(now,rng)||dirty;
     const h=this.housing,step=this.settings.dormitory_xp_seconds*1000;
     if(h.dorm&&this.companion.level<this.settings.companion.max_level){
       if(now<h.trainedAt){h.trainedAt=now;dirty=true;}
@@ -266,7 +274,7 @@ export class Economy {
     const amount=this.collect(item,quantity);if(!amount)return {error:'原料仓已满'};
     this.salvageUntil=now+this.settings.salvage_seconds*1000;this.questStats.salvages++;this.gainCompanionXp();this.onChange();return {item,amount,error:''};
   }
-  snapshot(){return structuredClone({version:1,deliveryTask:this.deliveryTask,wanderer:this.wanderer,wandererClock:this.wandererClock,employeePaused:this.employeePaused,employeePausedAt:this.employeePausedAt,landmarks:this.landmarks,questStats:this.questStats,questBoards:this.questBoards,employeeMeals:this.employeeMeals,employeeJobs:this.employeeJobs,employees:this.employees,housing:this.housing,construction:this.construction,companion:this.companion,stamina:this.stamina,staminaAt:this.staminaAt,voyageUntil:this.voyageUntil,salvageUntil:this.salvageUntil,inventory:this.inventory,coins:this.coins,reputation:this.reputation,trades:this.trades,gathered:this.gathered,tiles:[...this.tiles],structures:this.structures,queue:this.queue,visitors:this.visitors,clock:this.clock,nextVisitor:this.nextVisitor,elapsed:this.elapsed});}
+  snapshot(){return structuredClone({version:1,warehousePolicies:this.warehousePolicies,deliveryTask:this.deliveryTask,wanderer:this.wanderer,wandererClock:this.wandererClock,employeePaused:this.employeePaused,employeePausedAt:this.employeePausedAt,landmarks:this.landmarks,questStats:this.questStats,questBoards:this.questBoards,employeeMeals:this.employeeMeals,employeeJobs:this.employeeJobs,employees:this.employees,housing:this.housing,construction:this.construction,companion:this.companion,stamina:this.stamina,staminaAt:this.staminaAt,voyageUntil:this.voyageUntil,salvageUntil:this.salvageUntil,inventory:this.inventory,coins:this.coins,reputation:this.reputation,trades:this.trades,gathered:this.gathered,tiles:[...this.tiles],structures:this.structures,queue:this.queue,visitors:this.visitors,clock:this.clock,nextVisitor:this.nextVisitor,elapsed:this.elapsed});}
   restore(data){
     try{
       if(!data||data.version!==1||!data.inventory||typeof data.inventory!=='object')throw Error();
@@ -315,7 +323,8 @@ export class Economy {
       const wandererClock=data.wandererClock??0,wanderer=structuredClone(data.wanderer??null),wandererItems=new Set();if(!Number.isFinite(wandererClock)||wandererClock<0)throw Error();if(wanderer&&wanderer.remaining>this.settings.wanderer.visit_seconds&&wanderer.remaining<=600)wanderer.remaining=this.settings.wanderer.visit_seconds;
       if(wanderer!==null){if(!wanderer||typeof wanderer!=='object'||Array.isArray(wanderer)||!nonnegative(wanderer.slot)||wanderer.slot>=restoredDockCapacity||!Number.isFinite(wanderer.remaining)||wanderer.remaining<=0||wanderer.remaining>this.settings.wanderer.visit_seconds||!Number.isFinite(wanderer.age)||wanderer.age<0||!Array.isArray(wanderer.offers)||wanderer.offers.length<this.settings.wanderer.stock_min||wanderer.offers.length>this.settings.wanderer.stock_max)throw Error();for(const offer of wanderer.offers){const entry=this.settings.wanderer.catalog.find(row=>row.item===offer.item);if(!entry||wandererItems.has(offer.item)||!nonnegative(offer.quantity)||offer.quantity>entry.quantity_max||!positive(offer.price)||offer.price<entry.price_min||offer.price>entry.price_max||offer.implemented!==(entry.implemented!==false))throw Error();wandererItems.add(offer.item);}}
       const deliveryTask=structuredClone(data.deliveryTask??null),deliveryConfig=this.settings.delivery_trader;
-      if(deliveryTask!==null){const allowed=new Set(deliveryConfig.items.map(row=>row.item));if(!deliveryTask||typeof deliveryTask!=='object'||Array.isArray(deliveryTask)||!deliveryTask.buy||!deliveryTask.sell||Object.keys(deliveryTask.buy).some(id=>!allowed.has(id))||Object.keys(deliveryTask.sell).some(id=>!allowed.has(id))||Object.values(deliveryTask.buy).some(amount=>!nonnegative(amount))||Object.values(deliveryTask.sell).some(amount=>!nonnegative(amount))||!positive(deliveryTask.duration)||deliveryTask.duration<deliveryConfig.delivery_min_seconds||deliveryTask.duration>deliveryConfig.delivery_max_seconds||!Number.isFinite(deliveryTask.completeAt)||deliveryTask.completeAt<=0)throw Error();const summary=this.deliverySummary(deliveryTask.buy,deliveryTask.sell);for(const field of ['buyCost','sellRevenue','buyTotal','sellTotal','coinCharge','coinPayout'])if(deliveryTask[field]!==summary[field])throw Error();if(!summary.buyTotal&&!summary.sellTotal)throw Error();}
+      if(deliveryTask!==null){const allowed=new Set(deliveryConfig.items.map(row=>row.item));deliveryTask.automatic??=false;if(!deliveryTask||typeof deliveryTask!=='object'||Array.isArray(deliveryTask)||typeof deliveryTask.automatic!=='boolean'||!deliveryTask.buy||!deliveryTask.sell||Object.keys(deliveryTask.buy).some(id=>!allowed.has(id))||Object.keys(deliveryTask.sell).some(id=>!allowed.has(id))||Object.values(deliveryTask.buy).some(amount=>!nonnegative(amount))||Object.values(deliveryTask.sell).some(amount=>!nonnegative(amount))||!positive(deliveryTask.duration)||deliveryTask.duration<deliveryConfig.delivery_min_seconds||deliveryTask.duration>deliveryConfig.delivery_max_seconds||!Number.isFinite(deliveryTask.completeAt)||deliveryTask.completeAt<=0)throw Error();const summary=this.deliverySummary(deliveryTask.buy,deliveryTask.sell);for(const field of ['buyCost','sellRevenue','buyTotal','sellTotal','coinCharge','coinPayout'])if(deliveryTask[field]!==summary[field])throw Error();if(!summary.buyTotal&&!summary.sellTotal)throw Error();}
+      const warehousePolicies=structuredClone(data.warehousePolicies??Object.fromEntries(deliveryConfig.items.map(row=>[row.item,{min:0,max:null}])));if(this.warehousePolicyError(warehousePolicies))throw Error();
       if(!Array.isArray(copy.visitors))throw Error();const availableSlots=Array.from({length:restoredDockCapacity},(_,slot)=>slot).filter(slot=>slot!==wanderer?.slot);copy.visitors=copy.visitors.slice(0,availableSlots.length).map((visitor,index)=>({...visitor,slot:availableSlots[index]}));const slots=new Set();for(const v of copy.visitors){if(!this.npcs[v.npc]||!this.items[v.item]||!positive(v.quantity)||!positive(v.reward)||!nonnegative(v.slot)||v.slot>=restoredDockCapacity||slots.has(v.slot)||!Number.isFinite(v.remaining)||v.remaining<=0||!Number.isFinite(v.age)||v.age<0)throw Error();slots.add(v.slot);}
       this.companion=structuredClone(companion);
       this.housing=structuredClone(housing);
@@ -327,6 +336,7 @@ export class Economy {
       this.wanderer=structuredClone(wanderer);
       this.wandererClock=wandererClock;
       this.deliveryTask=structuredClone(deliveryTask);
+      this.warehousePolicies=structuredClone(warehousePolicies);
       this.questStats=structuredClone(questStats);
       this.questBoards=structuredClone(questBoards);
       this.construction=structuredClone(construction);
