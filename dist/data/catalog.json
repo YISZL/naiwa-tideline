@@ -1,0 +1,49 @@
+{
+  "items": [
+    {"id":"wood","name":"浮木","kind":"resource","color":"cda46b"},
+    {"id":"scrap","name":"废金属","kind":"resource","color":"a0bac4"},
+    {"id":"cloth","name":"布料","kind":"resource","color":"e5d8b4"},
+    {"id":"rope","name":"绳索","kind":"product","color":"e0b16a"},
+    {"id":"repair","name":"修理包","kind":"product","color":"ef9878"},
+    {"id":"supply","name":"远航补给箱","kind":"product","color":"88c8ad"},
+    {"id":"pork_rice","name":"猪脚饭","kind":"product","color":"dcad69"}
+  ],
+  "recipes": [
+    {"id":"rope","output":"rope","amount":1,"cost":{"wood":1,"cloth":2},"seconds":4,"reputation":0},
+    {"id":"repair","output":"repair","amount":1,"cost":{"wood":3,"scrap":2},"seconds":6,"reputation":0},
+    {"id":"supply","output":"supply","amount":1,"cost":{"rope":1,"repair":1,"pork_rice":1},"seconds":8,"reputation":3}
+  ],
+  "npcs": [
+    {"id":"visitor_a","name":"航海客","tag":"采购绳索","color":"e1b56f","preferences":[{"item":"rope","quantity":2,"reward":32}]},
+    {"id":"visitor_b","name":"修船匠","tag":"采购修理物资","color":"ed9c82","preferences":[{"item":"repair","quantity":1,"reward":34}]},
+    {"id":"visitor_c","name":"远行商","tag":"采购远航物资","color":"85c3b0","preferences":[{"item":"supply","quantity":1,"reward":86},{"item":"rope","quantity":1,"reward":18}]}
+  ],
+  "vendors": [
+    {"id":"food_supplier","name":"食物供应商","shop_name":"海岛食堂","description":"热乎的猪脚饭备好了。买一份带走，也能装进远航补给箱。","offers":[{"item":"pork_rice","quantity":1,"price":8}]}
+  ],
+  "buildings": [
+    {"id":"workshop","name":"加工台","description":"解锁道具制作","cost":{"wood":6,"scrap":2},"coins":20,"color":"ebae77"},
+    {"id":"warehouse","name":"仓库","description":"原料容量 +40","cost":{"wood":8,"scrap":2},"coins":25,"color":"9ebfb8"},
+    {"id":"shop","name":"商店","description":"接待前来采购的顾客","cost":{"wood":6,"cloth":2},"coins":20,"color":"ed947a"},
+    {"id":"dock","name":"码头","description":"接引顾客船只，需位于平台边缘","cost":{"wood":5},"coins":15,"color":"d8bd8d"}
+  ],
+  "settings": {
+    "starting_coins":80,
+    "max_stamina":6,
+    "voyage_stamina_cost":1,
+    "stamina_regen_seconds":3600,
+    "food_stamina_restore":2,
+    "voyage_seconds":60,
+    "salvage_seconds":6,
+    "floating_interval_seconds":18,
+    "salvage_loot":[{"item":"wood","weight":55,"min":1,"max":3},{"item":"scrap","weight":25,"min":1,"max":2},{"item":"cloth","weight":20,"min":1,"max":2}],
+    "starting_inventory":{"wood":12,"scrap":5,"cloth":6},
+    "base_capacity":40,
+    "warehouse_capacity":40,
+    "expansion_cost":{"wood":3},
+    "max_grid_radius":8,
+    "visitor_seconds":180,
+    "arrival_seconds":12,
+    "queue_limit":3
+  }
+}
