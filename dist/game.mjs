@@ -30,7 +30,8 @@ function renderRecipes(){
   }
   $('#workshop-status').textContent=game.has('workshop')?'可制作':'待建造';
   $('#queue').textContent=`制作队列 ${game.queue.length} / ${game.settings.queue_limit}`+(game.queue.length?'\n'+game.queue.map(t=>game.items[game.recipes[t.recipe].output].name).join(' → '):'');
-  $('#capacity').textContent=`原料仓 ${game.rawTotal()} / ${game.capacity()} · 浮岛 ${game.tiles.size} 格`;
+  $('#capacity').textContent=`原料仓 ${game.rawTotal()} / ${game.capacity()} · 浮岛 ${game.tiles.size} 格`+(game.construction?`\n便正在扩建 · ${Math.ceil(game.construction.remaining)} 秒`:'\n便 · 负责浮岛扩建');
+  updateHint();
 }
 function renderVisitors(){
   $('#order-count').textContent=`${game.visitors.length} / 3`;
@@ -59,7 +60,7 @@ function render(){
   for(const id of Object.keys(game.items)){$(`[data-count="${id}"]`)?.replaceChildren(document.createTextNode(game.count(id)));}
   $('[data-count="coins"]').textContent=game.coins;$('[data-count="reputation"]').textContent=String(game.reputation).padStart(2,'0');
   $('#pause').textContent=paused?'继续':'暂停';renderGuide();renderRecipes();renderVisitors();renderVendor();
-  renderJourney();updateHint();
+  renderJourney();renderCompanion();updateHint();
   if(game.structures[hero.cell]){hero.cell=[...game.tiles].find(k=>!game.structures[k]&&k!==game.reservedCell())||hero.cell;[hero.x,hero.z]=cell(hero.cell).map(n=>n*TILE);hero.path=[];}
 }
 function selectMode(id){if(game.atSea()&&id!=='collect'){notify('返航后才能建造');return;}mode=id;$$('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===id));setSheet('none');updateHint();}
@@ -70,12 +71,26 @@ function renderJourney(){
   const b=$('#voyage-button'),left=Math.max(0,Math.ceil((game.voyageUntil-Date.now())/1000));b.textContent=game.atSea()?`返航 · 剩余 ${left} 秒`:'出海 · 消耗 1 体力';b.disabled=paused||(!game.atSea()&&game.stamina<game.settings.voyage_stamina_cost);
   const salvage=$('#salvage-button'),error=game.salvageError();salvage.hidden=!game.atSea();salvage.textContent=error||'随机打捞';salvage.disabled=paused||Boolean(error);
 }
+function renderCompanion(){
+  const c=game.companion,b=game.companionBonuses(),max=c.level===game.settings.companion.max_level,needed=game.companionXpNeeded();
+  $('#companion-summary').textContent=`樾 · Lv.${c.level} · ${c.equipped?'同行':'休息'}`;
+  $('#companion-desktop').textContent=`樾 Lv.${c.level} · ${c.equipped?'同行':'休息'}`;
+  $('#companion-brief').textContent=c.equipped?`数量 +${b.quantity}% · 精良 ${b.fine}% · 稀有 ${b.rare}%`:'出战后提升打捞数量和品质';
+  $('#companion-level').textContent=`Lv.${c.level}`;
+  $('#companion-status').textContent=game.atSea()?(c.equipped?'樾正在陪同奶娃出海。返航后可调整。':'樾在岛上休息，返航后可邀请同行。'):(c.equipped?'已准备同行，下次出海自动陪同奶娃。':'正在岛上休息，出战后可陪同奶娃。');
+  $('#companion-bonus').textContent=`平均打捞数量 +${b.quantity}%`;
+  $('#companion-quality').textContent=`精良概率 ${b.fine}% · 稀有概率 ${b.rare}%`;
+  $('#companion-xp').textContent=max?'已满级':`经验 ${c.xp} / ${needed} · 还需 ${needed-c.xp} 次成功打捞升级`;
+  $('#companion-xp-bar').style.width=max?'100%':`${c.xp/needed*100}%`;
+  const button=$('#companion-toggle');button.disabled=game.atSea();button.textContent=game.atSea()?'返航后调整':c.equipped?'让樾休息':'邀请樾出战';
+}
 function updateHint(){
+  if(game.construction&&!game.atSea()){$('#mode-hint').textContent=`便正在扩建 · 还需 ${Math.ceil(game.construction.remaining)} 秒`;return;}
   $('#mode-hint').textContent=game.atSea()?'随机打捞为主 · 海面偶遇物资可直接拾取':mode==='collect'?'小岛上无法打捞 · 点击出海，或吃饭补充体力':hover?game.placementError(mode,hover)||(mode==='expand'?'点击扩建平台':`点击建造${game.buildings[mode].name} · R 旋转`):'点击空平台放置，右键取消';
 }
 function setSheet(name){$('#craft-panel').classList.toggle('active',name==='craft');$('#orders-panel').classList.toggle('active',name==='orders');$$('[data-sheet]').forEach(b=>b.classList.toggle('active',b.dataset.sheet===name));}
 function openDialog(id){
-  if($('#food-dialog').open||$('#new-dialog').open)return;dialogPreviousPause=paused;paused=true;render();$(id).showModal();keys.clear();
+  if($$('dialog').some(d=>d.open))return;dialogPreviousPause=paused;paused=true;render();$(id).showModal();keys.clear();
 }
 function closeDialog(id){$(id).close();paused=dialogPreviousPause;render();}
 function save(manual=false){
@@ -89,7 +104,7 @@ function pathTo(goal){
   if(!parents.has(goal))return;hero.path=[];for(let p=goal;p!==hero.cell;p=parents.get(p))hero.path.unshift(p);
 }
 function setupUI(){
-  $('#resources').innerHTML=Object.values(game.items).filter(i=>i.kind==='resource').map(i=>`<div class="resource"><small>${escape(i.name)}</small><strong data-count="${escape(i.id)}">0</strong></div>`).join('')+'<div class="resource gold"><small>金币</small><strong data-count="coins">80</strong></div><div class="resource rep"><small>声望</small><strong data-count="reputation">00</strong></div>';
+  $('#resources').innerHTML=Object.values(game.items).filter(i=>i.kind==='resource'&&!i.hide_topbar).map(i=>`<div class="resource"><small>${escape(i.name)}</small><strong data-count="${escape(i.id)}">0</strong></div>`).join('')+'<div class="resource gold"><small>金币</small><strong data-count="coins">80</strong></div><div class="resource rep"><small>声望</small><strong data-count="reputation">00</strong></div>';
   $('#recipes').innerHTML=Object.values(game.recipes).map(r=>`<article class="recipe" data-recipe="${escape(r.id)}"><div class="recipe-heading"><h3>${escape(game.items[r.output].name)}</h3><span class="owned">×0</span></div><p class="cost">${escape(costText(r.cost))}</p><button class="primary">制作</button><div class="progress"><i></i></div></article>`).join('');
   for(const r of Object.values(game.recipes))$(`[data-recipe="${r.id}"] button`).onclick=()=>{if(paused)return;const error=game.craft(r.id);notify(error||'已加入制作队列');};
   $('#visitors').innerHTML=Array.from({length:3},(_,slot)=>`<article class="visitor" data-slot="${slot}"><div class="visitor-heading"><h3>空闲泊位</h3><small></small></div><p class="order"></p><button class="primary">等待到港</button></article>`).join('');
@@ -104,19 +119,24 @@ function setupUI(){
   $$('[data-offer] button').forEach(b=>b.onclick=()=>{const error=game.buy('food_supplier',Number(b.closest('[data-offer]').dataset.offer));if(error)notify(error);else{renderVendor();save();}});
   $('#food-open').onclick=$('#food-mobile').onclick=()=>{setSheet('none');openDialog('#food-dialog');};
   $('#food-close').onclick=()=>closeDialog('#food-dialog');
+  $('#companion-open').onclick=()=>{setSheet('none');openDialog('#companion-dialog');};
+  $('#companion-desktop').onclick=$('#companion-open').onclick;
+  $('#companion-close').onclick=()=>closeDialog('#companion-dialog');
+  $('#companion-toggle').onclick=()=>{const error=game.setCompanion(!game.companion.equipped);if(error)notify(error);else save();};
   $('#eat-food').onclick=()=>{const error=game.eatFood();if(error)notify(error);else save();};
   $('#voyage-button').onclick=()=>{if(paused)return;if(game.atSea()){game.returnHome();}else{mode='collect';selectMode('collect');const error=game.beginVoyage();notify(error||'奶娃出海了！体力 -1，本次航行 60 秒');}save();};
-  $('#salvage-button').onclick=()=>{if(paused)return;const result=game.salvage();notify(result.error||`随机打捞：${game.items[result.item].name} +${result.amount}`);if(!result.error)save();};
+  $('#salvage-button').onclick=()=>{if(paused)return;const level=game.companion.level,result=game.salvage();notify(result.error||`随机打捞：${game.items[result.item].name} +${result.amount}${game.companion.level>level?` · 樾升到 Lv.${game.companion.level}！`:''}`);if(!result.error)save();};
   $('#pause').onclick=()=>{paused=!paused;render();};$('#save').onclick=()=>save(true);$('#new').onclick=()=>openDialog('#new-dialog');$('#cancel-new').onclick=()=>closeDialog('#new-dialog');
   $('#confirm-new').onclick=()=>{game.reset();hero={x:0,z:0,cell:'0,0',path:[],flip:false};saveBlocked=false;resources=[];boats.clear();for(let i=0;i<19;i++)spawnResource();lastStage='';pan={x:0,z:0};mode='collect';dialogPreviousPause=false;closeDialog('#new-dialog');selectMode('collect');save();notify('奶娃的新航程开始了');};
   $('#backup').onclick=()=>{let data;try{data=saveBlocked?localStorage.getItem(STORE):JSON.stringify(game.snapshot(),null,2);}catch{}const url=URL.createObjectURL(new Blob([data||JSON.stringify(game.snapshot(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='潮汐集市-存档.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-  for(const id of ['#food-dialog','#new-dialog'])$(id).addEventListener('cancel',event=>{event.preventDefault();closeDialog(id);});
+  for(const id of ['#food-dialog','#new-dialog','#companion-dialog'])$(id).addEventListener('cancel',event=>{event.preventDefault();closeDialog(id);});
 }
 
 function resize(){w=innerWidth;h=innerHeight;dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);}
 function scale(){return zoom*(w<=860?Math.min(1,w/690):Math.min(1,w/1340));}
-function project(x,z,y=0){const dx=x-pan.x,dz=z-pan.z,s=scale(),c=Math.cos(yaw),sn=Math.sin(yaw);return {x:w*.5+(dx*c-dz*sn)*s,y:h*(w<=860?.53:.51)+(dx*sn+dz*c)*s*.52-y*s};}
-function unproject(px,py){const s=scale(),a=(px-w*.5)/s,b=(py-h*(w<=860?.53:.51))/(s*.52),c=Math.cos(yaw),sn=Math.sin(yaw);return {x:a*c+b*sn+pan.x,z:-a*sn+b*c+pan.z};}
+function worldY(){return h*(game.atSea()?(w<=860?.6:.57):(w<=860?.53:.51));}
+function project(x,z,y=0){const dx=x-pan.x,dz=z-pan.z,s=scale(),c=Math.cos(yaw),sn=Math.sin(yaw);return {x:w*.5+(dx*c-dz*sn)*s,y:worldY()+(dx*sn+dz*c)*s*.52-y*s};}
+function unproject(px,py){const s=scale(),a=(px-w*.5)/s,b=(py-worldY())/(s*.52),c=Math.cos(yaw),sn=Math.sin(yaw);return {x:a*c+b*sn+pan.x,z:-a*sn+b*c+pan.z};}
 function polygon(points,fill,stroke){ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=.7;ctx.stroke();}}
 function brighten(hex,amount){const n=parseInt(hex.replace('#',''),16),r=Math.max(0,Math.min(255,(n>>16)+amount)),g=Math.max(0,Math.min(255,((n>>8)&255)+amount)),b=Math.max(0,Math.min(255,(n&255)+amount));return `rgb(${r},${g},${b})`;}
 function cube(x,z,width,depth,height,base,color){
@@ -154,7 +174,7 @@ function drawBuilding(k,b){
   }
 }
 function spawnResource(){
-  if(resources.length>=24)return;const raw=Object.values(game.items).filter(i=>i.kind==='resource'),id=raw[Math.floor(Math.random()*raw.length)].id;
+  if(resources.length>=24)return;const raw=game.settings.salvage_loot,id=raw[Math.floor(Math.random()*raw.length)].item;
   let extent=9;for(const k of game.tiles)extent=Math.max(extent,...cell(k).map(n=>Math.abs(n*TILE)+3.5));
   for(let tries=0;tries<45;tries++){const x=(Math.random()*2-1)*extent,z=(Math.random()*2-1)*extent;if(game.tiles.has(key(Math.round(x/TILE),Math.round(z/TILE)))||resources.some(r=>Math.hypot(r.x-x,r.z-z)<.8))continue;resources.push({id,x,z,amount:2,life:65+Math.random()*25,phase:Math.random()*6});return;}
 }
@@ -163,6 +183,28 @@ function drawResource(r){
   if(r.id==='wood'){for(let i=0;i<3;i++)cube(r.x,r.z+(i-1)*.12,.65,.1,.1,bob,'#d6b77c');}
   else if(r.id==='scrap'){cube(r.x,r.z,.45,.3,.22,bob-.04,'#9bbabc');cube(r.x+.09,r.z,.055,.31,.23,bob-.04,'#567e83');}
   else{cube(r.x,r.z,.39,.36,.31,bob-.01,'#e3d3ab');cube(r.x,r.z,.4,.07,.025,bob+.3,'#9a855b');}
+}
+function workerPose(){
+  const job=game.construction;
+  if(!job){const k=['-1,1','1,1','-2,1',...game.tiles].find(k=>game.tiles.has(k)&&!game.structures[k]&&k!==game.reservedCell()&&k!==hero.cell)||'-1,-1';const[x,z]=cell(k);return {x:x*TILE,z:z*TILE,hammer:0};}
+  const[a,b]=cell(job.from),[x,z]=cell(job.cell),progress=1-job.remaining/game.settings.construction_seconds,walk=Math.min(1,progress*4),reach=.52*walk;
+  return {x:(a+(x-a)*reach)*TILE,z:(b+(z-b)*reach)*TILE,hammer:progress>.25?Math.sin(progress*55):0};
+}
+function drawWorker(){
+  const{x,z,hammer}=workerPose();ellipse(x,z,.25,.2,'#493f3650',.24);
+  for(const side of[-1,1]){cube(x+side*.12,z,.16,.21,.44,.24,'#454f59');cube(x+side*.12,z+.05,.17,.3,.1,.24,'#343b42');}
+  cube(x,z,.48,.29,.49,.67,'#262b43');cube(x,z+.16,.28,.025,.12,.83,'#b6ab65');
+  line3([[x-.27,z,1.04],[x-.35,z+.1,.77]],'#d3aa8d',Math.max(2,scale()*.1));
+  const handY=.87+hammer*.13;line3([[x+.27,z,1.04],[x+.4,z+.15,handY]],'#d3aa8d',Math.max(2,scale()*.1));
+  line3([[x+.4,z+.15,handY],[x+.57,z+.18,handY+.19]],'#bc965d',Math.max(2,scale()*.055));cube(x+.57,z+.18,.25,.12,.11,handY+.15,'#8eaaae');
+  sprite(images.bian,x,z,.62,1.13);textAt(game.construction?'便 · 扩建中':'便 · 扩建工人',x,z,.04,'#f4d292',w<=860?10:11);
+}
+function drawConstruction(){
+  const job=game.construction;if(!job)return;const[x,z]=cell(job.cell).map(n=>n*TILE),progress=1-job.remaining/game.settings.construction_seconds;
+  cube(x,z,TILE*.92,TILE*.92,.06,.07,'#826c4f');
+  for(let i=0;i<Math.floor(progress*5);i++)cube(x,z+(i-2)*TILE/5,TILE*.98,TILE/5-.02,.045,.18,'#ddbe89');
+  for(const a of[-.58,.58])cube(x+a,z+.59,.055,.055,.55,.13,'#e9bc62');line3([[x-.58,z+.59,.64],[x+.58,z+.59,.64]],'#f1d37e',2);
+  textAt(`施工 ${Math.round(progress*100)}%`,x,z,.85,'#f7d57f',10);
 }
 function drawBoat(boat){
   const{x,z,color}=boat;ellipse(x+.15,z+.2,.6,.95,'#0a3d4635',-.1);
@@ -187,12 +229,13 @@ function draw(){
   drawWater();
   if(game.atSea()){
     resources.slice().sort((a,b)=>project(a.x,a.z).y-project(b.x,b.z).y).forEach(drawResource);
-    drawBoat({x:0,z:0,color:'e5b45f'});sprite(images.naiwa,0,.4,1.4,.3+Math.sin(time*2)*.04);textAt('奶娃 · 出海中',0,0,2.35,'#fff1c5',w<=860?11:13);return;
+    drawBoat({x:0,z:0,color:'e5b45f'});if(game.companion.equipped)sprite(images.yue,-.65,-.1,1.25,.5+Math.sin(time*2)*.04);sprite(images.naiwa,.25,.4,1.4,.3+Math.sin(time*2)*.04);textAt(game.companion.equipped?`奶娃 & 樾 Lv.${game.companion.level}`:'奶娃 · 出海中',0,0,2.1,'#fff1c5',w<=860?11:13);return;
   }
-  const tiles=[...game.tiles].sort((a,b)=>{const[x,z]=cell(a),[xx,zz]=cell(b);return project(x,z).y-project(xx,zz).y;});for(const k of tiles)drawTile(k);
+  const tiles=[...game.tiles].sort((a,b)=>{const[x,z]=cell(a),[xx,zz]=cell(b);return project(x,z).y-project(xx,zz).y;});for(const k of tiles)drawTile(k);drawConstruction();
   const entities=resources.map(r=>({depth:project(r.x,r.z).y,draw:()=>drawResource(r)}));
   for(const[k,b]of Object.entries(game.structures)){const[x,z]=cell(k).map(n=>n*TILE);entities.push({depth:project(x,z).y,draw:()=>drawBuilding(k,b)});}
   const vendor=game.reservedCell();if(vendor){const[x,z]=cell(vendor).map(n=>n*TILE);entities.push({depth:project(x,z+.2).y,draw:drawVendor});}
+  const worker=workerPose();entities.push({depth:project(worker.x,worker.z).y,draw:drawWorker});
   entities.push({depth:project(hero.x,hero.z).y,draw:()=>{ellipse(hero.x,hero.z,.31,.23,'#8a704550',.235);sprite(images.naiwa,hero.x,hero.z,characters.hero.world_height,.24+Math.sin(time*(hero.path.length?11:2))*(hero.path.length?.06:.012),hero.flip);textAt('奶娃',hero.x,hero.z,2.25,'#fff2bf',w<=860?10:11);}});
   for(const boat of boats.values())entities.push({depth:project(boat.x,boat.z).y,draw:()=>drawBoat(boat)});
   entities.sort((a,b)=>a.depth-b.depth);entities.forEach(e=>e.draw());drawPreview();
@@ -216,7 +259,7 @@ function clickWorld(x,y){
   const vendor=game.reservedCell();if(vendor){const[a,b]=cell(vendor).map(n=>n*TILE),p=project(a,b,.8);if(Math.hypot(x-p.x,y-p.y)<Math.max(24,scale()*.75)){openDialog('#food-dialog');return;}}
   const r=resourceAt(x,y);if(r){const n=game.collect(r.id,r.amount);if(n){r.amount-=n;if(!r.amount)resources.splice(resources.indexOf(r),1);notify(`奶娃打捞到 ${game.items[r.id].name} +${n}`);}return;}
   const p=unproject(x,y),k=key(Math.round(p.x/TILE),Math.round(p.z/TILE));
-  if(mode!=='collect'){const error=game.build(mode,k,rotation);notify(error||(mode==='expand'?'平台已扩建':`${game.buildings[mode].name}已建好`));return;}
+  if(mode!=='collect'){const error=game.build(mode,k,rotation);notify(error||(mode==='expand'?'便已接下扩建，正在施工…':`${game.buildings[mode].name}已建好`));if(!error)save();return;}
   for(const[slot,b]of boats){const p=project(b.x,b.z,.3);if(Math.hypot(x-p.x,y-p.y)<Math.max(22,scale()*.5)){const error=game.trade(slot);if(error)notify(error);return;}}
   pathTo(k);
 }
@@ -233,7 +276,7 @@ function frame(now){const dt=lastFrame?Math.min((now-lastFrame)/1000,.1):0;lastF
 async function start(){
   try{
     const [catalog,defs]=await Promise.all(['./data/catalog.json','./data/characters.json'].map(async path=>{const r=await fetch(path);if(!r.ok)throw Error('配置加载失败');return r.json();}));characters=defs;game=new Economy(catalog);
-    const sources=[defs.hero,...defs.guides,...defs.suppliers];await Promise.all(sources.map(row=>new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>{images[row.id]=image;resolve();};image.onerror=()=>reject(Error(`角色图片无法加载：${row.name}`));image.src=row.image;})));
+    const sources=[defs.hero,...defs.guides,...defs.suppliers,...defs.companions,...defs.workers];await Promise.all(sources.map(row=>new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>{images[row.id]=image;resolve();};image.onerror=()=>reject(Error(`角色图片无法加载：${row.name}`));image.src=row.image;})));
     try{const saved=localStorage.getItem(STORE);if(saved){const error=game.restore(JSON.parse(saved));if(error){saveBlocked=true;setTimeout(()=>notify(error),1000);}}}catch{saveBlocked=true;setTimeout(()=>notify('本地存档不可用；仍可试玩。需要时可下载存档。'),1000);}
     setupUI();started=true;game.onChange=render;game.onNotice=notify;render();resize();bindInput();$('#hud').hidden=false;$('#loading').style.opacity=0;setTimeout(()=>$('#loading').remove(),350);requestAnimationFrame(frame);
   }catch(error){$('#loading-message').textContent=`${error.message}，请刷新重试。`;console.error(error);}

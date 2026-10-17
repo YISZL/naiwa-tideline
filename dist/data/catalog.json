@@ -6,7 +6,9 @@
     {"id":"rope","name":"绳索","kind":"product","color":"e0b16a"},
     {"id":"repair","name":"修理包","kind":"product","color":"ef9878"},
     {"id":"supply","name":"远航补给箱","kind":"product","color":"88c8ad"},
-    {"id":"pork_rice","name":"猪脚饭","kind":"product","color":"dcad69"}
+    {"id":"pork_rice","name":"猪脚饭","kind":"product","color":"dcad69"},
+    {"id":"fine_cargo","name":"精良货物","kind":"resource","color":"77c6ac","hide_topbar":true},
+    {"id":"rare_cargo","name":"稀有货物","kind":"resource","color":"bda1e3","hide_topbar":true}
   ],
   "recipes": [
     {"id":"rope","output":"rope","amount":1,"cost":{"wood":1,"cloth":2},"seconds":4,"reputation":0},
@@ -16,7 +18,7 @@
   "npcs": [
     {"id":"visitor_a","name":"航海客","tag":"采购绳索","color":"e1b56f","preferences":[{"item":"rope","quantity":2,"reward":32}]},
     {"id":"visitor_b","name":"修船匠","tag":"采购修理物资","color":"ed9c82","preferences":[{"item":"repair","quantity":1,"reward":34}]},
-    {"id":"visitor_c","name":"远行商","tag":"采购远航物资","color":"85c3b0","preferences":[{"item":"supply","quantity":1,"reward":86},{"item":"rope","quantity":1,"reward":18}]}
+    {"id":"visitor_c","name":"远行商","tag":"采购远航物资与优质货物","color":"85c3b0","preferences":[{"item":"supply","quantity":1,"reward":86},{"item":"rope","quantity":1,"reward":18},{"item":"fine_cargo","quantity":1,"reward":24,"requires_owned":true},{"item":"rare_cargo","quantity":1,"reward":60,"requires_owned":true}]}
   ],
   "vendors": [
     {"id":"food_supplier","name":"食物供应商","shop_name":"海岛食堂","description":"热乎的猪脚饭备好了。买一份带走，也能装进远航补给箱。","offers":[{"item":"pork_rice","quantity":1,"price":8}]}
@@ -36,6 +38,8 @@
     "voyage_seconds":60,
     "salvage_seconds":6,
     "floating_interval_seconds":18,
+    "construction_seconds":4,
+    "companion":{"max_level":10,"xp_base":5,"xp_step":2,"quantity_percent":20,"fine_base":10,"fine_step":2,"rare_base":2,"rare_step":1},
     "salvage_loot":[{"item":"wood","weight":55,"min":1,"max":3},{"item":"scrap","weight":25,"min":1,"max":2},{"item":"cloth","weight":20,"min":1,"max":2}],
     "starting_inventory":{"wood":12,"scrap":5,"cloth":6},
     "base_capacity":40,

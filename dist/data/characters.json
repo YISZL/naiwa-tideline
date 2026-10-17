@@ -5,6 +5,12 @@
     "image":"./assets/naiwa.png",
     "world_height":1.85
   },
+  "workers": [
+    {"id":"bian","name":"便","role":"扩建工人","image":"./assets/bian-head.png","world_height":1.5}
+  ],
+  "companions": [
+    {"id":"yue","name":"樾","role":"出海伙伴","image":"./assets/yue.png","world_height":1.25}
+  ],
   "suppliers": [
     {"id":"food_supplier","name":"食物供应商","image":"./assets/food-supplier.png","world_height":1.7}
   ],
@@ -35,4 +41,3 @@
     }
   ]
 }
-
