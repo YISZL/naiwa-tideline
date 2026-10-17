@@ -7,7 +7,7 @@ const canvas=$('#sea'),ctx=canvas.getContext('2d');
 let game,characters,images={},mode='collect',rotation=0,paused=false,selectedGuide='renbo',lastStage='',saveBlocked=false,decorateSelection=null;
 let w=0,h=0,dpr=1,zoom=53,yaw=.65,pan={x:0,z:0},hero={x:0,z:0,cell:'0,0',path:[],flip:false},pointer={x:-999,y:-999},hover=null;
 let time=0,lastFrame=0,uiClock=0,spawnClock=0,saveClock=0,toastTimer,resources=[],boats=new Map(),keys=new Set(),dialogPreviousPause=false;
-let storageWorks=true,started=false,drag=null,dragged=false;
+let storageWorks=true,started=false,drag=null,dragged=false,guideCollapsed=false;
 let lastVoyage=false;
 
 const costText=cost=>Object.entries(cost).map(([id,n])=>`${game.items[id].name} ${n}`).join(' · ');
@@ -15,7 +15,7 @@ function notify(message){const el=$('#toast');el.textContent=message;el.classLis
 function stage(){return !game.has('workshop')?'start':!game.trades?'craft':game.reputation<3?'trade':'grow';}
 function setGuide(id){selectedGuide=id;renderGuide();}
 function renderGuide(){
-  const bar=$('#guide-bar');if(game.atSea()){bar.hidden=true;return;}bar.hidden=false;
+  const bar=$('#guide-bar'),hidden=game.atSea()||guideCollapsed;bar.hidden=hidden;$('#guide-toggle').textContent=guideCollapsed?'显示任务栏':'隐藏任务栏';if(hidden)return;
   const unlocked=game.introComplete();$$('[data-guide]').forEach(button=>button.hidden=unlocked);
   for(const id of ['renbo','chaorui']){
     const button=$(`#${id}-task-open`);button.hidden=false;button.classList.toggle('locked',!unlocked);button.setAttribute('aria-disabled',String(!unlocked));
@@ -93,7 +93,7 @@ function render(){
 }
 function selectMode(id){if(game.atSea()&&id!=='collect'){notify('返航后才能调整浮岛');return;}mode=id;if(id!=='decorate')decorateSelection=null;$$('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===id));const decorate=$('#decorate-toggle');if(decorate){decorate.textContent=id==='decorate'?'退出装修':'装修';decorate.classList.toggle('active',id==='decorate');}setSheet('none');updateHint();}
 function renderJourney(){
-  $('#stamina-count').textContent=`体力 ${game.stamina} / ${game.settings.max_stamina}`;
+  $('#stamina-count').textContent=`${game.stamina} / ${game.settings.max_stamina}`;
   const wait=Math.max(0,Math.ceil((game.settings.stamina_regen_seconds*1000-(Date.now()-game.staminaAt))/1000));
   $('#stamina-recovery').textContent=game.stamina===game.settings.max_stamina?'每小时回复 1 点':`${Math.floor(wait/60)}:${String(wait%60).padStart(2,'0')} 后回复 1 点`;
   const b=$('#voyage-button'),left=Math.max(0,Math.ceil((game.voyageUntil-Date.now())/1000));b.textContent=game.atSea()?`返航 · 剩余 ${left} 秒`:'出海 · 消耗 1 体力';b.disabled=paused||(!game.atSea()&&game.stamina<game.settings.voyage_stamina_cost);
@@ -151,13 +151,15 @@ function pathTo(goal){
   if(!parents.has(goal))return;hero.path=[];for(let p=goal;p!==hero.cell;p=parents.get(p))hero.path.unshift(p);
 }
 function setupUI(){
-  $('#resources').innerHTML=Object.values(game.items).filter(i=>i.kind==='resource'&&!i.hide_topbar).map(i=>`<div class="resource"><small>${escape(i.name)}</small><strong data-count="${escape(i.id)}">0</strong></div>`).join('')+'<div class="resource gold"><small>金币</small><strong data-count="coins">80</strong></div><div class="resource rep"><small>声望</small><strong data-count="reputation">00</strong></div>';
+  $('#resources').innerHTML=Object.values(game.items).filter(i=>i.kind==='resource'&&!i.hide_topbar).map(i=>`<div class="resource"><small>${escape(i.name)}</small><strong data-count="${escape(i.id)}">0</strong></div>`).join('')+'<div class="resource gold"><small>金币</small><strong data-count="coins">80</strong></div><div class="resource rep"><small>声望</small><strong data-count="reputation">00</strong></div><div class="resource stamina"><small>体力</small><strong id="stamina-count">6 / 6</strong><span id="stamina-recovery">每小时回复 1 点</span></div>';
   $('#recipes').innerHTML=Object.values(game.recipes).map(r=>`<article class="recipe" data-recipe="${escape(r.id)}"><div class="recipe-heading"><h3>${escape(game.items[r.output].name)}</h3><span class="owned">×0</span></div><p class="cost">${escape(costText(r.cost))}</p><button class="primary">制作</button><div class="progress"><i></i></div></article>`).join('');
   for(const r of Object.values(game.recipes))$(`[data-recipe="${r.id}"] button`).onclick=()=>{if(paused)return;const error=game.craft(r.id);notify(error||'已加入制作队列');};
   const entries=[{id:'collect',name:'航行打捞',detail:'出海后收集物资'},{id:'expand',name:'扩建平台',detail:costText(game.settings.expansion_cost)},...Object.values(game.buildings).map(b=>({id:b.id,name:b.name,detail:`${costText(b.cost)} · ${b.coins} 金`}))];
   $('#build-tools').innerHTML=entries.map(b=>`<button data-mode="${b.id}" class="${b.id===mode?'active':''}">${escape(b.name)}<span>${escape(b.detail)}</span></button>`).join('');
   $$('[data-mode]').forEach(b=>b.onclick=()=>selectMode(b.dataset.mode));
   $('#decorate-toggle').onclick=()=>selectMode(mode==='decorate'?'collect':'decorate');
+  $('#guide-toggle').onclick=()=>{guideCollapsed=!guideCollapsed;renderGuide();};
+  $('#guide-close').onclick=()=>{guideCollapsed=true;renderGuide();};
   $('#panels-toggle').onclick=toggleSidePanels;
   $$('[data-panel-close]').forEach(button=>button.onclick=()=>{const id=button.dataset.panelClose;document.querySelector(`#${id==='craft'?'craft':'orders'}-panel`).classList.add('collapsed');setSheet('none');renderSideControls();});
   $$('[data-guide]').forEach(b=>b.onclick=()=>setGuide(b.dataset.guide));
