@@ -256,7 +256,7 @@
         "name": "自豪",
         "price": 100,
         "max": 10,
-        "voyage_seconds": 600
+        "voyage_seconds": 300
       },
       "haozi": {
         "name": "豪自",
