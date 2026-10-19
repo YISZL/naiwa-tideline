@@ -23,7 +23,7 @@ export class Economy {
     this.structures={'0,2':{id:'dock',rotation:0}};
     this.landmarks={food_supplier:'1,-1',renbo:'-2,0',chaorui:'2,0',muscle_frog:'-2,-1',zihao:'2,1',haozi:'1,2',bian:'-1,1',feidudu:'0,-2',flag:'-2,-2'};
     this.queue=[]; this.visitors=[]; this.clock=0; this.nextVisitor=0; this.elapsed=0;
-    this.stamina=this.settings.max_stamina;this.staminaAt=Date.now();this.voyageUntil=0;this.salvageUntil=0;
+    this.stamina=this.settings.max_stamina;this.staminaAt=Date.now();this.voyageUntil=0;this.salvageUntil=0;this.voyageRoute=this.settings.voyage_routes?.[0]?.id||'coast';this.voyageSupplies={salvage_net:false,current_compass:false};this.activeVoyageSupplies={salvage_net:false,current_compass:false};this.cargoCrateUpgrades=0;
     this.companion={level:1,xp:0,equipped:true};
     this.housing={dorm:null,trainedAt:0,progress:0};
     this.employees={zihao:[],haozi:[]};
@@ -36,12 +36,13 @@ export class Economy {
     this.warehousePolicies=Object.fromEntries(this.settings.delivery_trader.items.map(row=>[row.item,{min:0,max:null}]));
     this.questStats={voyages:0,salvages:0,gathered:0,expanded:0,built:0,crafted:0};
     this.questBoards={renbo:{refreshedAt:0,serial:0,tasks:[]},chaorui:{refreshedAt:0,serial:0,tasks:[]}};
+    this.orderStreak=0;this.bestOrderStreak=0;this.developmentClaims=[];
     this.construction=null;
     this.spawnVisitor();this.onChange();
   }
   count(id){return this.inventory[id]||0;}
   has(id){return Object.values(this.structures).some(b=>b.id===id);}
-  capacity(){return this.settings.base_capacity+Object.values(this.structures).filter(b=>b.id==='warehouse').length*this.settings.warehouse_capacity;}
+  capacity(){return this.settings.base_capacity+Object.values(this.structures).filter(b=>b.id==='warehouse').length*this.settings.warehouse_capacity+this.cargoCrateUpgrades*(this.settings.cargo_crate_capacity||0);}
   rawTotal(){return Object.values(this.items).filter(i=>i.kind==='resource').reduce((n,i)=>n+this.count(i.id),0);}
   deliveryReservedRaw(){return this.deliveryTask?Object.values(this.deliveryTask.buy).reduce((n,amount)=>n+amount,0):0;}
   rawCommittedTotal(){return this.rawTotal()+this.deliveryReservedRaw();}
@@ -91,6 +92,18 @@ export class Economy {
   warehouseFloor(id){return this.warehousePolicies[id]?.min||0;}
   employeeAvailable(id){return Math.max(0,this.count(id)-this.warehouseFloor(id));}
   employeeAfford(cost){return Object.entries(cost).every(([id,amount])=>this.employeeAvailable(id)>=amount);}
+  voyageRouteConfig(id=this.voyageRoute){return this.settings.voyage_routes?.find(route=>route.id===id)||null;}
+  voyageRouteError(id){const route=this.voyageRouteConfig(id);if(!route)return '航线不存在';if(this.reputation<route.reputation)return `声望 ${route.reputation} 解锁${route.name}`;if(this.stamina<route.stamina)return `体力不足：${route.name}需要 ${route.stamina} 点体力`;return '';}
+  setVoyageSupply(id,equipped){if(this.atSea())return '返航后再调整航行装备';if(!Object.hasOwn(this.voyageSupplies,id)||typeof equipped!=='boolean')return '航行装备无效';if(equipped&&this.count(id)<1)return `仓库里没有${this.items[id].name}`;this.voyageSupplies[id]=equipped;this.onChange();return '';}
+  cargoCrateError(){if(this.atSea())return '返航后才能加固仓库';if(this.reputation<this.recipes.cargo_crate.reputation)return `声望 ${this.recipes.cargo_crate.reputation} 解锁加固货箱`;if(this.cargoCrateUpgrades>=this.settings.cargo_crate_max)return '加固货箱已达到升级上限';if(this.count('cargo_crate')<1)return '先在加工台制作加固货箱';return '';}
+  useCargoCrate(){const error=this.cargoCrateError();if(error)return error;this.inventory.cargo_crate--;this.cargoCrateUpgrades++;this.onChange();this.onNotice(`仓库加固完成：永久容量 +${this.settings.cargo_crate_capacity}`);return '';}
+  buildingCount(id){return Object.values(this.structures).filter(building=>building.id===id).length;}
+  developmentRequirementValue(requirement){if(requirement.type==='building')return this.buildingCount(requirement.id);if(requirement.type==='trades')return this.trades;if(requirement.type==='reputation')return this.reputation;if(requirement.type==='employees')return Object.keys(this.settings.employees).reduce((total,id)=>total+this.employeeCount(id),0);if(requirement.type==='companion_level')return this.companion.level;return 0;}
+  developmentMilestone(id){return this.settings.development_milestones?.find(row=>row.id===id)||null;}
+  developmentReady(id){const milestone=this.developmentMilestone(id);return Boolean(milestone)&&milestone.requirements.every(requirement=>this.developmentRequirementValue(requirement)>=requirement.goal);}
+  claimDevelopment(id){const milestone=this.developmentMilestone(id);if(!milestone)return '发展目标不存在';if(this.developmentClaims.includes(id))return '该发展奖励已经领取';if(!this.developmentReady(id))return '发展目标尚未完成';this.coins+=milestone.reward.coins||0;for(const[item,amount]of Object.entries(milestone.reward))if(item!=='coins')this.inventory[item]=this.count(item)+amount;this.developmentClaims.push(id);this.onChange();this.onNotice(`发展目标完成：${milestone.name} · ${this.rewardText(milestone.reward)}`);return '';}
+  rewardText(reward){return Object.entries(reward).map(([id,amount])=>id==='coins'?`金币 +${amount}`:`${this.items[id].name} +${amount}`).join(' · ');}
+  advanceOrderStreak(){this.orderStreak++;this.bestOrderStreak=Math.max(this.bestOrderStreak,this.orderStreak);const config=this.settings.order_streak;if(!config||this.orderStreak%config.step)return 0;const tier=this.orderStreak/config.step,bonus=Math.min(config.max_bonus,config.base_bonus+(tier-1)*config.bonus_step);this.coins+=bonus;return bonus;}
   warehousePolicyError(policies){
     const allowed=new Set(this.settings.delivery_trader.items.map(row=>row.item));if(!policies||typeof policies!=='object'||Array.isArray(policies)||Object.keys(policies).some(id=>!allowed.has(id)))return '仓库策略无效';for(const id of allowed){const policy=policies[id];if(!policy||!nonnegative(policy.min)||(policy.max!==null&&!nonnegative(policy.max))||(policy.max!==null&&policy.max<policy.min))return `${this.items[id].name}的底线或上限无效`;}return '';
   }
@@ -116,7 +129,7 @@ export class Economy {
   hireEmployeeError(id){const config=this.settings.employees?.[id];if(!config)return '员工不存在';if(this.atSea())return '返航后才能招募员工';if(this.employeeCount(id)>=config.max)return `${config.name}已达到招募上限`;if(this.coins<config.price)return `金币不足，还需要 ${config.price-this.coins} 金币`;return '';}
   hireEmployee(id,now=Date.now()){
     this.syncClock(now);const error=this.hireEmployeeError(id);if(error)return error;const config=this.settings.employees[id];
-    this.coins-=config.price;this.employees[id].push(now+(config.voyage_seconds||0)*1000);this.employeeMeals[id].push(now+this.settings.employee_meal_seconds*1000);if(id==='haozi')this.employeeJobs.haozi.push(null);this.onChange();this.onNotice(id==='zihao'?'招募成功：自豪 ×1，船队将在 10 分钟后带回物资':'招募成功：豪自 ×1，将自动处理码头订单');return '';
+    this.coins-=config.price;this.employees[id].push(now+(config.voyage_seconds||0)*1000);this.employeeMeals[id].push(now+this.settings.employee_meal_seconds*1000);if(id==='haozi')this.employeeJobs.haozi.push(null);this.onChange();this.onNotice(id==='zihao'?'招募成功：自豪 ×1，船队将在 5 分钟后带回物资':'招募成功：豪自 ×1，将自动处理码头订单');return '';
   }
   employeeSecondsRemaining(id,now=Date.now()){const timers=this.employees[id]||[],reference=this.employeePaused[id]?this.employeePausedAt[id]:now;return timers.length?Math.max(0,Math.ceil((Math.min(...timers)-reference)/1000)):0;}
   employeeMealSecondsRemaining(id,now=Date.now()){const meals=this.employeeMeals[id]||[],active=meals.filter(Boolean),reference=this.employeePaused[id]?this.employeePausedAt[id]:now;return active.length?Math.max(0,Math.ceil((Math.min(...active)-reference)/1000)):0;}
@@ -143,7 +156,7 @@ export class Economy {
     for(const [ingredient,needed]of Object.entries(recipe.cost)){if(this.employeeAvailable(ingredient)>=needed)continue;const nested=this.recipeForOrder(ingredient,needed,new Set(seen));if(nested)return nested;return null;}
     return this.employeeAfford(recipe.cost)?recipe:null;
   }
-  autoTrade(slot){const index=this.visitors.findIndex(visitor=>visitor.slot===slot);if(index<0)return false;const visitor=this.visitors[index];if(visitor.age<2||this.count(visitor.item)<visitor.quantity)return false;this.inventory[visitor.item]-=visitor.quantity;this.coins+=visitor.reward;this.reputation++;this.trades++;this.visitors.splice(index,1);this.refreshQuests();this.onNotice(`豪自完成码头订单：金币 +${visitor.reward} · 声望 +1`);return true;}
+  autoTrade(slot){const index=this.visitors.findIndex(visitor=>visitor.slot===slot);if(index<0)return false;const visitor=this.visitors[index];if(visitor.age<2||this.count(visitor.item)<visitor.quantity)return false;this.inventory[visitor.item]-=visitor.quantity;this.coins+=visitor.reward;this.reputation++;this.trades++;this.visitors.splice(index,1);const bonus=this.advanceOrderStreak();this.refreshQuests();this.onNotice(`豪自完成码头订单：金币 +${visitor.reward}${bonus?` · 连单奖励 +${bonus}`:''} · 声望 +1`);return true;}
   syncHaoziWorker(index,limit,now,reserved){
     let dirty=false,cursor=now,job=this.employeeJobs.haozi[index];
     for(let guard=0;guard<24;guard++){
@@ -218,13 +231,13 @@ export class Economy {
     this.visitors.push({npc:id,...p,slot,remaining:this.settings.visitor_seconds,age:0});this.onChange();
   }
   tradeError(slot){if(this.atSea())return '返航后交付订单';const v=this.visitors.find(v=>v.slot===slot);if(!v)return '顾客已离港';if(v.age<2)return '顾客正在靠岸';if(this.count(v.item)<v.quantity)return '商品不足，先制作一些吧';return '';}
-  trade(slot){const error=this.tradeError(slot);if(error)return error;const index=this.visitors.findIndex(v=>v.slot===slot),v=this.visitors[index];this.inventory[v.item]-=v.quantity;this.coins+=v.reward;this.reputation++;this.trades++;this.visitors.splice(index,1);this.refreshQuests();this.onChange();this.onNotice(`交易成功！金币 +${v.reward} · 声望 +1`);return '';}
+  trade(slot){const error=this.tradeError(slot);if(error)return error;const index=this.visitors.findIndex(v=>v.slot===slot),v=this.visitors[index];this.inventory[v.item]-=v.quantity;this.coins+=v.reward;this.reputation++;this.trades++;this.visitors.splice(index,1);const bonus=this.advanceOrderStreak();this.refreshQuests();this.onChange();this.onNotice(`交易成功！金币 +${v.reward}${bonus?` · 连单奖励 +${bonus}`:''} · 声望 +1`);return '';}
   tick(dt){
     this.syncClock();
     if(!Number.isFinite(dt)||dt<=0)return;this.elapsed+=dt;let budget=dt,dirty=false;
     if(this.construction){this.construction.remaining-=dt;if(this.construction.remaining<=0){this.tiles.add(this.construction.cell);this.construction=null;this.questStats.expanded++;dirty=true;this.onNotice('便已完成扩建，新平台可以使用了！');}}
     while(this.queue.length&&budget>0){const task=this.queue[0],spent=Math.min(budget,task.remaining);task.remaining-=spent;budget-=spent;if(task.remaining<=1e-7){const r=this.recipes[task.recipe];this.inventory[r.output]=this.count(r.output)+r.amount;this.queue.shift();this.questStats.crafted+=r.amount;dirty=true;this.onNotice(`${this.items[r.output].name} 制作完成`);}}
-    for(const v of this.visitors){v.remaining-=dt;v.age+=dt;}const n=this.visitors.length;this.visitors=this.visitors.filter(v=>v.remaining>0);dirty ||= n!==this.visitors.length;
+    for(const v of this.visitors){v.remaining-=dt;v.age+=dt;}const n=this.visitors.length;this.visitors=this.visitors.filter(v=>v.remaining>0);if(n!==this.visitors.length){dirty=true;if(this.orderStreak){this.orderStreak=0;this.onNotice('有订单超时离港，连续交付已中断');}}
     this.wandererClock+=dt;
     if(this.wanderer){this.wanderer.remaining-=dt;this.wanderer.age+=dt;if(this.wanderer.remaining<=0){this.wanderer=null;dirty=true;this.onNotice('粉红蛙已经离开码头，5 分钟后再次出现');}}
     else{const interval=this.settings.wanderer?.interval_seconds||600;if(this.wandererClock>=interval)dirty=this.spawnWanderer(Math.random,true)||dirty;}
@@ -242,15 +255,16 @@ export class Economy {
     }
     if(now<this.staminaAt)this.staminaAt=now;
     if(this.stamina<this.settings.max_stamina){const step=this.settings.stamina_regen_seconds*1000,n=Math.floor((now-this.staminaAt)/step);if(n>0){this.stamina=Math.min(this.settings.max_stamina,this.stamina+n);this.staminaAt=this.stamina===this.settings.max_stamina?now:this.staminaAt+n*step;dirty=true;}}
-    if(this.voyageUntil&&now>=this.voyageUntil){this.voyageUntil=0;dirty=true;this.onNotice('本次航行结束，奶蛙已安全返航');}
+    if(this.voyageUntil&&now>=this.voyageUntil){this.voyageUntil=0;this.activeVoyageSupplies={salvage_net:false,current_compass:false};dirty=true;this.onNotice('本次航行结束，奶蛙已安全返航');}
     if(dirty)this.onChange();
   }
-  beginVoyage(now=Date.now()){
-    this.syncClock(now);if(this.atSea())return '已经在海上';if(this.stamina<this.settings.voyage_stamina_cost)return '体力不足：每小时恢复 1 点，或吃一份猪脚饭恢复 2 点';
+  beginVoyage(routeId=this.settings.voyage_routes?.[0]?.id||'coast',now=Date.now()){
+    if(typeof routeId==='number'){now=routeId;routeId=this.settings.voyage_routes?.[0]?.id||'coast';}
+    this.syncClock(now);if(this.atSea())return '已经在海上';const error=this.voyageRouteError(routeId);if(error)return error;const route=this.voyageRouteConfig(routeId);
     if(this.stamina===this.settings.max_stamina)this.staminaAt=now;
-    this.stamina-=this.settings.voyage_stamina_cost;this.voyageUntil=now+this.settings.voyage_seconds*1000;this.salvageUntil=0;this.questStats.voyages++;this.onChange();return '';
+    this.stamina-=route.stamina;this.voyageRoute=route.id;this.activeVoyageSupplies={salvage_net:false,current_compass:false};for(const id of Object.keys(this.voyageSupplies))if(this.voyageSupplies[id]&&this.count(id)>0){this.inventory[id]--;this.activeVoyageSupplies[id]=true;this.voyageSupplies[id]=false;}this.voyageUntil=now+route.seconds*1000;this.salvageUntil=0;this.questStats.voyages++;this.onChange();return '';
   }
-  returnHome(){if(!this.atSea())return;this.voyageUntil=0;this.onChange();this.onNotice('奶蛙已返航，本次航行不会退还体力');}
+  returnHome(){if(!this.atSea())return;this.voyageUntil=0;this.activeVoyageSupplies={salvage_net:false,current_compass:false};this.onChange();this.onNotice('奶蛙已返航，本次航行不会退还体力');}
   eatError(){if(this.stamina>=this.settings.max_stamina)return '体力已满，无需吃饭';if(this.count('pork_rice')<1)return '背包里没有猪脚饭';return '';}
   eatFood(now=Date.now()){this.syncClock(now);const error=this.eatError();if(error)return error;const gain=Math.min(this.settings.food_stamina_restore,this.settings.max_stamina-this.stamina);this.inventory.pork_rice--;this.stamina+=gain;if(this.stamina===this.settings.max_stamina)this.staminaAt=now;this.onChange();this.onNotice(`奶蛙吃了一份猪脚饭，体力 +${gain}`);return '';}
   salvageError(now=Date.now()){if(!this.atSea())return '先出海再打捞';if(now<this.salvageUntil)return `打捞准备中 · ${Math.ceil((this.salvageUntil-now)/1000)} 秒`;if(this.rawCommittedTotal()>=this.capacity())return '原料仓已满，返航制作或扩建仓库吧';return '';}
@@ -269,12 +283,11 @@ export class Economy {
     this.syncClock(now);const error=this.salvageError(now);if(error)return {error};
     const table=this.settings.salvage_loot,total=table.reduce((n,l)=>n+l.weight,0);let pick=rng()*total,loot=table.at(-1);
     for(const row of table){pick-=row.weight;if(pick<0){loot=row;break;}}
-    let item=loot.item,quantity=loot.min+Math.floor(rng()*(loot.max-loot.min+1));
-    if(this.companion.equipped){const b=this.companionBonuses(),expected=quantity*(1+b.quantity/100),base=Math.floor(expected);quantity=base+(rng()<expected-base?1:0);const quality=rng()*100;if(quality<b.rare)item='rare_cargo';else if(quality<b.rare+b.fine)item='fine_cargo';}
+    let item=loot.item,quantity=loot.min+Math.floor(rng()*(loot.max-loot.min+1));const route=this.voyageRouteConfig()||{quantity_percent:0,fine_bonus:0,rare_bonus:0},b=this.companion.equipped?this.companionBonuses():{quantity:0,fine:0,rare:0},gear=this.settings.voyage_equipment||{},net=this.activeVoyageSupplies.salvage_net?gear.salvage_net?.quantity_percent||0:0,compass=this.activeVoyageSupplies.current_compass?gear.current_compass||{}:{},expected=quantity*(1+(b.quantity+route.quantity_percent+net)/100),base=Math.floor(expected);quantity=base+(rng()<expected-base?1:0);const rare=b.rare+route.rare_bonus+(compass.rare_bonus||0),fine=b.fine+route.fine_bonus+(compass.fine_bonus||0),quality=rng()*100;if(quality<rare)item='rare_cargo';else if(quality<rare+fine)item='fine_cargo';
     const amount=this.collect(item,quantity);if(!amount)return {error:'原料仓已满'};
     this.salvageUntil=now+this.settings.salvage_seconds*1000;this.questStats.salvages++;this.gainCompanionXp();this.onChange();return {item,amount,error:''};
   }
-  snapshot(){return structuredClone({version:1,warehousePolicies:this.warehousePolicies,deliveryTask:this.deliveryTask,wanderer:this.wanderer,wandererClock:this.wandererClock,employeePaused:this.employeePaused,employeePausedAt:this.employeePausedAt,landmarks:this.landmarks,questStats:this.questStats,questBoards:this.questBoards,employeeMeals:this.employeeMeals,employeeJobs:this.employeeJobs,employees:this.employees,housing:this.housing,construction:this.construction,companion:this.companion,stamina:this.stamina,staminaAt:this.staminaAt,voyageUntil:this.voyageUntil,salvageUntil:this.salvageUntil,inventory:this.inventory,coins:this.coins,reputation:this.reputation,trades:this.trades,gathered:this.gathered,tiles:[...this.tiles],structures:this.structures,queue:this.queue,visitors:this.visitors,clock:this.clock,nextVisitor:this.nextVisitor,elapsed:this.elapsed});}
+  snapshot(){return structuredClone({version:1,cargoCrateUpgrades:this.cargoCrateUpgrades,voyageSupplies:this.voyageSupplies,activeVoyageSupplies:this.activeVoyageSupplies,developmentClaims:this.developmentClaims,orderStreak:this.orderStreak,bestOrderStreak:this.bestOrderStreak,voyageRoute:this.voyageRoute,warehousePolicies:this.warehousePolicies,deliveryTask:this.deliveryTask,wanderer:this.wanderer,wandererClock:this.wandererClock,employeePaused:this.employeePaused,employeePausedAt:this.employeePausedAt,landmarks:this.landmarks,questStats:this.questStats,questBoards:this.questBoards,employeeMeals:this.employeeMeals,employeeJobs:this.employeeJobs,employees:this.employees,housing:this.housing,construction:this.construction,companion:this.companion,stamina:this.stamina,staminaAt:this.staminaAt,voyageUntil:this.voyageUntil,salvageUntil:this.salvageUntil,inventory:this.inventory,coins:this.coins,reputation:this.reputation,trades:this.trades,gathered:this.gathered,tiles:[...this.tiles],structures:this.structures,queue:this.queue,visitors:this.visitors,clock:this.clock,nextVisitor:this.nextVisitor,elapsed:this.elapsed});}
   restore(data){
     try{
       if(!data||data.version!==1||!data.inventory||typeof data.inventory!=='object')throw Error();
@@ -287,6 +300,11 @@ export class Economy {
       if(!companion||!positive(companion.level)||companion.level>this.settings.companion.max_level||!nonnegative(companion.xp)||companion.xp>=this.companionXpNeeded(companion.level)||typeof companion.equipped!=='boolean'||(companion.level===this.settings.companion.max_level&&companion.xp!==0))throw Error();
       const stamina=data.stamina??this.settings.max_stamina,staminaAt=data.staminaAt??Date.now(),voyageUntil=data.voyageUntil??0,salvageUntil=data.salvageUntil??0;
       if(!nonnegative(stamina)||stamina>this.settings.max_stamina||!Number.isFinite(staminaAt)||staminaAt<0||!Number.isFinite(voyageUntil)||voyageUntil<0||!Number.isFinite(salvageUntil)||salvageUntil<0)throw Error();
+      const defaultRoute=this.settings.voyage_routes?.[0]?.id||'coast',voyageRoute=data.voyageRoute??defaultRoute;if(!this.voyageRouteConfig(voyageRoute))throw Error();
+      const supplyIds=Object.keys(this.settings.voyage_equipment||{}),voyageSupplies=structuredClone(data.voyageSupplies??Object.fromEntries(supplyIds.map(id=>[id,false]))),activeVoyageSupplies=structuredClone(data.activeVoyageSupplies??Object.fromEntries(supplyIds.map(id=>[id,false])));for(const supplies of [voyageSupplies,activeVoyageSupplies])if(!supplies||typeof supplies!=='object'||Array.isArray(supplies)||Object.keys(supplies).some(id=>!supplyIds.includes(id))||supplyIds.some(id=>typeof supplies[id]!=='boolean'))throw Error();if(!voyageUntil&&Object.values(activeVoyageSupplies).some(Boolean))throw Error();
+      const cargoCrateUpgrades=data.cargoCrateUpgrades??0;if(!nonnegative(cargoCrateUpgrades)||cargoCrateUpgrades>this.settings.cargo_crate_max)throw Error();
+      const milestoneIds=(this.settings.development_milestones||[]).map(row=>row.id),developmentClaims=structuredClone(data.developmentClaims??[]);if(!Array.isArray(developmentClaims)||new Set(developmentClaims).size!==developmentClaims.length||developmentClaims.some(id=>!milestoneIds.includes(id)))throw Error();
+      const orderStreak=data.orderStreak??0,bestOrderStreak=data.bestOrderStreak??orderStreak;if(!nonnegative(orderStreak)||!nonnegative(bestOrderStreak)||orderStreak>bestOrderStreak||bestOrderStreak>data.trades)throw Error();
       for(const [id,n]of Object.entries(data.inventory))if(!this.items[id]||!nonnegative(n))throw Error();
       for(const p of ['coins','reputation','trades','gathered','nextVisitor'])if(!nonnegative(data[p]))throw Error();
       for(const p of ['clock','elapsed'])if(!Number.isFinite(data[p])||data[p]<0)throw Error();
@@ -337,6 +355,13 @@ export class Economy {
       this.wandererClock=wandererClock;
       this.deliveryTask=structuredClone(deliveryTask);
       this.warehousePolicies=structuredClone(warehousePolicies);
+      this.voyageRoute=voyageRoute;
+      this.voyageSupplies=structuredClone(voyageSupplies);
+      this.activeVoyageSupplies=structuredClone(activeVoyageSupplies);
+      this.cargoCrateUpgrades=cargoCrateUpgrades;
+      this.developmentClaims=structuredClone(developmentClaims);
+      this.orderStreak=orderStreak;
+      this.bestOrderStreak=bestOrderStreak;
       this.questStats=structuredClone(questStats);
       this.questBoards=structuredClone(questBoards);
       this.construction=structuredClone(construction);

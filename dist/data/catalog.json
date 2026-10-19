@@ -22,25 +22,50 @@
       "id": "rope",
       "name": "绳索",
       "kind": "product",
-      "color": "e0b16a"
+      "color": "e0b16a",
+      "description": "基础加工件，用于高级制作和码头订单。"
     },
     {
       "id": "repair",
       "name": "修理包",
       "kind": "product",
-      "color": "ef9878"
+      "color": "ef9878",
+      "description": "重要维修物资，可交付订单或制作远航补给箱。"
     },
     {
       "id": "supply",
       "name": "远航补给箱",
       "kind": "product",
-      "color": "88c8ad"
+      "color": "88c8ad",
+      "description": "高价值综合产品，主要用于远行商订单。"
+    },
+    {
+      "id": "salvage_net",
+      "name": "打捞网",
+      "kind": "product",
+      "color": "79b8aa",
+      "description": "一次性航行装备，本次出海平均打捞数量 +25%。"
+    },
+    {
+      "id": "current_compass",
+      "name": "海流罗盘",
+      "kind": "product",
+      "color": "d5a65a",
+      "description": "一次性航行装备，本次出海精良概率 +5%、稀有概率 +2%。"
+    },
+    {
+      "id": "cargo_crate",
+      "name": "加固货箱",
+      "kind": "product",
+      "color": "a97d55",
+      "description": "永久仓库升级材料，每件增加 10 格原料容量，最多使用 5 件。"
     },
     {
       "id": "pork_rice",
       "name": "猪脚饭",
       "kind": "product",
-      "color": "dcad69"
+      "color": "dcad69",
+      "description": "恢复奶蛙 2 点体力，也是员工持续工作的口粮。"
     },
     {
       "id": "fine_cargo",
@@ -107,6 +132,40 @@
       },
       "seconds": 8,
       "reputation": 3
+    },
+    {
+      "id": "salvage_net",
+      "output": "salvage_net",
+      "amount": 1,
+      "cost": {
+        "rope": 1,
+        "cloth": 2
+      },
+      "seconds": 5,
+      "reputation": 2
+    },
+    {
+      "id": "current_compass",
+      "output": "current_compass",
+      "amount": 1,
+      "cost": {
+        "scrap": 2,
+        "cloth": 1
+      },
+      "seconds": 6,
+      "reputation": 5
+    },
+    {
+      "id": "cargo_crate",
+      "output": "cargo_crate",
+      "amount": 1,
+      "cost": {
+        "wood": 4,
+        "scrap": 3,
+        "rope": 1
+      },
+      "seconds": 10,
+      "reputation": 8
     }
   ],
   "npcs": [
@@ -236,6 +295,54 @@
     "food_stamina_restore": 2,
     "voyage_seconds": 60,
     "salvage_seconds": 6,
+    "voyage_routes": [
+      {
+        "id": "coast",
+        "name": "近海漂流",
+        "description": "稳定的基础航线，适合补充常用物资。",
+        "reputation": 0,
+        "stamina": 1,
+        "seconds": 60,
+        "quantity_percent": 0,
+        "fine_bonus": 0,
+        "rare_bonus": 0
+      },
+      {
+        "id": "current",
+        "name": "外海洋流",
+        "description": "航程更长，平均打捞量与优质货物概率提高。",
+        "reputation": 5,
+        "stamina": 2,
+        "seconds": 75,
+        "quantity_percent": 25,
+        "fine_bonus": 4,
+        "rare_bonus": 1
+      },
+      {
+        "id": "deep",
+        "name": "深海遗迹",
+        "description": "高消耗远航，拥有最高数量与品质加成。",
+        "reputation": 12,
+        "stamina": 3,
+        "seconds": 90,
+        "quantity_percent": 50,
+        "fine_bonus": 8,
+        "rare_bonus": 3
+      }
+    ],
+    "voyage_equipment": {
+      "salvage_net": {
+        "quantity_percent": 25,
+        "description": "本次航程所有随机打捞平均数量 +25%"
+      },
+      "current_compass": {
+        "fine_bonus": 5,
+        "rare_bonus": 2,
+        "description": "本次航程精良概率 +5%，稀有概率 +2%"
+      }
+    },
+    "cargo_crate_capacity": 10,
+    "cargo_crate_max": 5,
     "floating_interval_seconds": 18,
     "construction_seconds": 4,
     "dormitory_beds": 2,
@@ -365,6 +472,57 @@
     "visitor_seconds": 180,
     "arrival_seconds": 12,
     "queue_limit": 3,
+    "order_streak": {
+      "step": 3,
+      "base_bonus": 10,
+      "bonus_step": 5,
+      "max_bonus": 30
+    },
+    "development_milestones": [
+      {
+        "id": "first_trade",
+        "name": "生存起步",
+        "description": "建成加工台，并累计完成 3 笔码头订单。",
+        "requirements": [
+          {"type": "building", "id": "workshop", "goal": 1, "label": "加工台"},
+          {"type": "trades", "goal": 3, "label": "码头订单"}
+        ],
+        "reward": {"coins": 30, "pork_rice": 2}
+      },
+      {
+        "id": "busy_harbor",
+        "name": "繁忙港湾",
+        "description": "扩建第二座码头，让岛屿进入稳定经营阶段。",
+        "requirements": [
+          {"type": "building", "id": "dock", "goal": 2, "label": "码头"},
+          {"type": "trades", "goal": 10, "label": "码头订单"},
+          {"type": "reputation", "goal": 8, "label": "声望"}
+        ],
+        "reward": {"coins": 60, "rope": 2}
+      },
+      {
+        "id": "steady_crew",
+        "name": "自动化班组",
+        "description": "完善仓储与住宿，并组建至少 3 人的员工队伍。",
+        "requirements": [
+          {"type": "building", "id": "warehouse", "goal": 1, "label": "仓库"},
+          {"type": "building", "id": "dormitory", "goal": 1, "label": "宿舍"},
+          {"type": "employees", "goal": 3, "label": "员工"}
+        ],
+        "reward": {"coins": 100, "pork_rice": 6}
+      },
+      {
+        "id": "deep_ready",
+        "name": "深海准备",
+        "description": "提升岛屿储备与伙伴实力，准备探索深海遗迹。",
+        "requirements": [
+          {"type": "building", "id": "warehouse", "goal": 2, "label": "仓库"},
+          {"type": "reputation", "goal": 12, "label": "声望"},
+          {"type": "companion_level", "goal": 3, "label": "樾等级"}
+        ],
+        "reward": {"coins": 160, "repair": 2, "supply": 1}
+      }
+    ],
     "wanderer": {
       "name": "粉红蛙",
       "visit_seconds": 300,

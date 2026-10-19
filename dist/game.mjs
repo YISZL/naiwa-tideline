@@ -57,6 +57,7 @@ function renderVisitors(){
     el.querySelector('.order').textContent=`${game.items[v.item].name} ×${v.quantity}　持有 ${game.count(v.item)}`;
     const error=game.tradeError(slot);button.disabled=paused||Boolean(error);button.textContent=v.age<2?'正在靠岸…':error?`备货中 · 报酬 ${v.reward} 金`:`交付 +${v.reward} 金币`;
   }
+  const streak=game.settings.order_streak,next=streak.step-game.orderStreak%streak.step;$('#order-streak').textContent=`连续交付 ${game.orderStreak} 单 · 历史最佳 ${game.bestOrderStreak} 单 · 再交付 ${next} 单获得连单奖励`;
 }
 function renderVendor(){
   const vendor=game.vendors.food_supplier;$('#food-vendor-name').textContent=vendor.name;$('#food-description').textContent=vendor.description;
@@ -108,7 +109,7 @@ function render(){
   for(const id of Object.keys(game.items)){$(`[data-count="${id}"]`)?.replaceChildren(document.createTextNode(game.count(id)));}
   $('[data-count="coins"]').textContent=game.coins;$('[data-count="reputation"]').textContent=String(game.reputation).padStart(2,'0');
   $('#pause').textContent=paused?'继续':'暂停';renderBuildMenu();renderGuide();renderRecipes();renderVisitors();renderVendor();renderWanderer();renderDelivery();renderRecruitment();renderQuestBoards();
-  renderJourney();renderCompanion();renderDorm();updateHint();
+  renderJourney();renderRoutes();renderDevelopment();renderCompanion();renderDorm();updateHint();
   if(game.structures[hero.cell]||game.landmarkAt(hero.cell)){hero.cell=[...game.tiles].find(k=>!game.structures[k]&&!game.landmarkAt(k))||hero.cell;[hero.x,hero.z]=cell(hero.cell).map(n=>n*TILE);hero.path=[];}
 }
 function renderBuildMenu(){const open=buildMenuOpen&&!game.atSea();$('.buildbar').classList.toggle('open',open);$('#decorate-toggle').textContent=open?'收起装修':'装修';$('#decorate-toggle').classList.toggle('active',open);$$('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));}
@@ -118,8 +119,16 @@ function renderJourney(){
   $('#stamina-count').textContent=`${game.stamina} / ${game.settings.max_stamina}`;
   const wait=Math.max(0,Math.ceil((game.settings.stamina_regen_seconds*1000-(Date.now()-game.staminaAt))/1000));
   $('#stamina-recovery').textContent=game.stamina===game.settings.max_stamina?'每小时回复 1 点':`${Math.floor(wait/60)}:${String(wait%60).padStart(2,'0')} 后回复 1 点`;
-  const b=$('#voyage-button'),left=Math.max(0,Math.ceil((game.voyageUntil-Date.now())/1000));b.textContent=game.atSea()?`返航 · 剩余 ${left} 秒`:'出海 · 消耗 1 体力';b.disabled=paused||(!game.atSea()&&game.stamina<game.settings.voyage_stamina_cost);
+  const route=game.voyageRouteConfig(),b=$('#voyage-button'),left=Math.max(0,Math.ceil((game.voyageUntil-Date.now())/1000));b.textContent=game.atSea()?`返航 · ${route.name} ${left} 秒`:'选择航线 · 出海';b.disabled=paused;
   const salvage=$('#salvage-button'),error=game.salvageError();salvage.hidden=!game.atSea();salvage.textContent=error||'随机打捞';salvage.disabled=paused||Boolean(error);
+}
+function renderRoutes(){
+  for(const route of game.settings.voyage_routes){const card=$(`[data-route="${route.id}"]`);if(!card)continue;const error=game.voyageRouteError(route.id),button=card.querySelector('button');card.classList.toggle('locked',game.reputation<route.reputation);card.querySelector('.route-status').textContent=game.reputation<route.reputation?`声望 ${route.reputation} 解锁`:`${route.stamina} 体力 · ${route.seconds} 秒`;button.disabled=Boolean(error);button.textContent=error||`选择${route.name}`;}
+  for(const id of Object.keys(game.voyageSupplies)){const button=$(`[data-voyage-supply="${id}"]`),selected=game.voyageSupplies[id],count=game.count(id),gear=game.settings.voyage_equipment[id];button.classList.toggle('selected',selected);button.disabled=game.atSea()||(!selected&&count<1);button.textContent=`${selected?'✓ ':''}${game.items[id].name} ×${count} · ${gear.description}`;}
+}
+function renderDevelopment(){
+  const container=$('#development-milestones');container.innerHTML=game.settings.development_milestones.map(milestone=>{const claimed=game.developmentClaims.includes(milestone.id),ready=game.developmentReady(milestone.id),requirements=milestone.requirements.map(requirement=>{const value=Math.min(requirement.goal,game.developmentRequirementValue(requirement));return `${escape(requirement.label)} ${value}/${requirement.goal}`;}).join(' · ');return `<article class="development-card${ready?' ready':''}${claimed?' claimed':''}" data-milestone="${escape(milestone.id)}"><div><strong>${escape(milestone.name)}</strong><span>${claimed?'已领取':ready?'可领取':'进行中'}</span></div><p>${escape(milestone.description)}</p><small>${requirements}</small><b>${escape(game.rewardText(milestone.reward))}</b><button class="primary" ${ready&&!claimed?'':'disabled'}>${claimed?'奖励已领取':ready?'领取奖励':'尚未完成'}</button></article>`;}).join('');
+  const max=game.settings.cargo_crate_max,error=game.cargoCrateError();$('#cargo-upgrade-status').textContent=`已强化 ${game.cargoCrateUpgrades} / ${max} · 当前额外容量 +${game.cargoCrateUpgrades*game.settings.cargo_crate_capacity} · 持有货箱 ${game.count('cargo_crate')}`;const button=$('#cargo-upgrade-use');button.disabled=Boolean(error);button.textContent=error||`使用 1 件 · 容量 +${game.settings.cargo_crate_capacity}`;
 }
 function renderCompanion(){
   const c=game.companion,b=game.companionBonuses(),max=c.level===game.settings.companion.max_level,needed=game.companionXpNeeded();
@@ -151,7 +160,7 @@ function renderDorm(){
 }
 function updateHint(){
   if(game.construction&&!game.atSea()){$('#mode-hint').textContent=`便正在扩建 · 还需 ${Math.ceil(game.construction.remaining)} 秒`;return;}
-  if(game.atSea()){$('#mode-hint').textContent='随机打捞为主 · 海面偶遇物资可直接拾取';return;}
+  if(game.atSea()){$('#mode-hint').textContent=`${game.voyageRouteConfig().name} · 随机打捞为主，海面物资可直接拾取`;return;}
   if(mode==='decorate'){$('#mode-hint').textContent=decorateSelection?`已选择${decorateSelection.name} · 点击目标平台完成移动`:'装修模式 · 点击建筑或地标，再点击目标平台';return;}
   $('#mode-hint').textContent=mode==='collect'?'小岛上无法打捞 · 点击出海，或吃饭补充体力':hover?game.placementError(mode,hover)||(mode==='expand'?'点击扩建平台':`点击建造${game.buildings[mode].name} · R 旋转`):'点击空平台放置，右键取消';
 }
@@ -174,7 +183,7 @@ function pathTo(goal){
 }
 function setupUI(){
   $('#resources').innerHTML=Object.values(game.items).filter(i=>i.kind==='resource'&&!i.hide_topbar).map(i=>`<div class="resource"><small>${escape(i.name)}</small><strong data-count="${escape(i.id)}">0</strong></div>`).join('')+'<div class="resource gold"><small>金币</small><strong data-count="coins">80</strong></div><div class="resource rep"><small>声望</small><strong data-count="reputation">00</strong></div><div class="resource stamina"><small>体力</small><strong id="stamina-count">6 / 6</strong><span id="stamina-recovery">每小时回复 1 点</span></div>';
-  $('#recipes').innerHTML=Object.values(game.recipes).map(r=>`<article class="recipe" data-recipe="${escape(r.id)}"><div class="recipe-heading"><h3>${escape(game.items[r.output].name)}</h3><span class="owned">×0</span></div><p class="cost">${escape(costText(r.cost))}</p><button class="primary">制作</button><div class="progress"><i></i></div></article>`).join('');
+  $('#recipes').innerHTML=Object.values(game.recipes).map(r=>`<article class="recipe" data-recipe="${escape(r.id)}"><div class="recipe-heading"><h3>${escape(game.items[r.output].name)}</h3><span class="owned">×0</span></div><p class="recipe-effect">${escape(game.items[r.output].description||'用于码头订单与后续加工')}</p><p class="cost">${escape(costText(r.cost))}</p><button class="primary">制作</button><div class="progress"><i></i></div></article>`).join('');
   for(const r of Object.values(game.recipes))$(`[data-recipe="${r.id}"] button`).onclick=()=>{if(paused)return;const error=game.craft(r.id);notify(error||'已加入制作队列');};
   const entries=[{id:'decorate',name:'移动布局',detail:'调整建筑与地标位置'},{id:'expand',name:'扩建平台',detail:costText(game.settings.expansion_cost)},...Object.values(game.buildings).map(b=>({id:b.id,name:b.name,detail:`${costText(b.cost)} · ${b.coins} 金`}))];
   $('#build-tools').innerHTML=entries.map(b=>`<button data-mode="${b.id}" class="${b.id===mode?'active':''}">${escape(b.name)}<span>${escape(b.detail)}</span></button>`).join('');
@@ -182,6 +191,7 @@ function setupUI(){
   deliveryDraft={buy:{},sell:{}};$('#delivery-lines').innerHTML=game.settings.delivery_trader.items.map(row=>{deliveryDraft.buy[row.item]=0;deliveryDraft.sell[row.item]=0;return `<article class="delivery-line"><div><strong>${escape(game.items[row.item].name)}</strong><small data-delivery-owned="${escape(row.item)}">持有 ${game.count(row.item)} · 买 ${row.buy_price} 金 / 卖 ${row.sell_price} 金</small></div><label>购买<input type="number" min="0" step="1" inputmode="numeric" data-delivery-buy="${escape(row.item)}" value="0"></label><label>售卖<input type="number" min="0" step="1" inputmode="numeric" data-delivery-sell="${escape(row.item)}" value="0"></label></article>`;}).join('');
   $$('[data-delivery-buy],[data-delivery-sell]').forEach(input=>input.oninput=()=>{const id=input.dataset.deliveryBuy||input.dataset.deliverySell,type=input.dataset.deliveryBuy?'buy':'sell',value=Number(input.value);deliveryDraft[type][id]=Number.isSafeInteger(value)&&value>=0?value:0;renderDelivery();});
   $('#warehouse-policy-lines').innerHTML=game.settings.delivery_trader.items.map(row=>`<article class="warehouse-policy-line"><strong>${escape(game.items[row.item].name)}</strong><label>保底<input type="number" min="0" step="1" inputmode="numeric" data-policy-min="${escape(row.item)}"></label><label>上限<input type="number" min="0" step="1" inputmode="numeric" placeholder="不限" data-policy-max="${escape(row.item)}"></label></article>`).join('');
+  $('#voyage-routes').innerHTML=game.settings.voyage_routes.map(route=>`<article class="voyage-route" data-route="${escape(route.id)}"><div><strong>${escape(route.name)}</strong><span class="route-status"></span></div><p>${escape(route.description)}</p><small>数量 +${route.quantity_percent}% · 精良 +${route.fine_bonus}% · 稀有 +${route.rare_bonus}%</small><button class="primary">选择航线</button></article>`).join('');
   $('#decorate-toggle').onclick=toggleBuildMenu;
   $('#guide-toggle').onclick=()=>{guideCollapsed=!guideCollapsed;renderGuide();};
   $('#guide-close').onclick=()=>{guideCollapsed=true;renderGuide();};
@@ -203,6 +213,13 @@ function setupUI(){
   $('#warehouse-policy-open').onclick=()=>{for(const row of game.settings.delivery_trader.items){const policy=game.warehousePolicies[row.item];$(`[data-policy-min="${row.item}"]`).value=policy.min;$(`[data-policy-max="${row.item}"]`).value=policy.max??'';}setSheet('none');openDialog('#warehouse-policy-dialog');};
   $('#warehouse-policy-close').onclick=()=>closeDialog('#warehouse-policy-dialog');
   $('#warehouse-policy-save').onclick=()=>{const policies={};for(const row of game.settings.delivery_trader.items){const min=Number($(`[data-policy-min="${row.item}"]`).value),raw=$(`[data-policy-max="${row.item}"]`).value.trim(),max=raw===''?null:Number(raw);policies[row.item]={min,max};}const error=game.setWarehousePolicies(policies);if(error)notify(error);else{closeDialog('#warehouse-policy-dialog');save();}};
+  $('#development-open').onclick=()=>{setSheet('none');openDialog('#development-dialog');};
+  $('#development-close').onclick=()=>closeDialog('#development-dialog');
+  $('#development-milestones').onclick=event=>{const card=event.target.closest('[data-milestone]');if(!card||!event.target.closest('button'))return;const error=game.claimDevelopment(card.dataset.milestone);notify(error||'发展奖励已领取');if(!error){renderDevelopment();save();}};
+  $('#cargo-upgrade-use').onclick=()=>{const error=game.useCargoCrate();notify(error||`仓库容量永久 +${game.settings.cargo_crate_capacity}`);if(!error){renderDevelopment();save();}};
+  $('#voyage-route-close').onclick=()=>closeDialog('#voyage-route-dialog');
+  $('#voyage-routes').onclick=event=>{const card=event.target.closest('[data-route]');if(!card||!event.target.closest('button'))return;const route=game.voyageRouteConfig(card.dataset.route),error=game.beginVoyage(card.dataset.route);if(error){notify(error);return;}closeDialog('#voyage-route-dialog');notify(`奶蛙驶向${route.name}！体力 -${route.stamina}，航行 ${route.seconds} 秒`);save();};
+  $$('[data-voyage-supply]').forEach(button=>button.onclick=()=>{const id=button.dataset.voyageSupply,error=game.setVoyageSupply(id,!game.voyageSupplies[id]);if(error)notify(error);else{renderRoutes();save();}});
   $('#hire-zihao').onclick=()=>{const error=game.hireEmployee('zihao');if(error)notify(error);else{renderRecruitment();save();}};
   $('#hire-haozi').onclick=()=>{const error=game.hireEmployee('haozi');if(error)notify(error);else{renderRecruitment();save();}};
   $('#pause-zihao').onclick=()=>{const error=game.setEmployeePaused('zihao',!game.employeePaused.zihao);if(error)notify(error);else{renderRecruitment();save();}};
@@ -223,12 +240,12 @@ function setupUI(){
   $('#dorm-room').onchange=renderDorm;
   $('#dorm-action').onclick=()=>{const error=game.housing.dorm===$('#dorm-room').value?game.unhouseCompanion():game.houseCompanion($('#dorm-room').value);if(error)notify(error);else save();};
   $('#eat-food').onclick=()=>{const error=game.eatFood();if(error)notify(error);else save();};
-  $('#voyage-button').onclick=()=>{if(paused)return;if(game.atSea()){game.returnHome();}else{buildMenuOpen=false;mode='collect';selectMode('collect');const error=game.beginVoyage();notify(error||'奶蛙出海了！体力 -1，本次航行 60 秒');}save();};
+  $('#voyage-button').onclick=()=>{if(paused)return;if(game.atSea()){game.returnHome();save();return;}buildMenuOpen=false;mode='collect';selectMode('collect');openDialog('#voyage-route-dialog');};
   $('#salvage-button').onclick=()=>{if(paused)return;const level=game.companion.level,result=game.salvage();notify(result.error||`随机打捞：${game.items[result.item].name} +${result.amount}${game.companion.level>level?` · 樾升到 Lv.${game.companion.level}！`:''}`);if(!result.error)save();};
   $('#pause').onclick=()=>{paused=!paused;render();};$('#save').onclick=()=>save(true);$('#new').onclick=()=>openDialog('#new-dialog');$('#cancel-new').onclick=()=>closeDialog('#new-dialog');
   $('#confirm-new').onclick=()=>{game.reset();deliveryDraft={buy:Object.fromEntries(game.settings.delivery_trader.items.map(row=>[row.item,0])),sell:Object.fromEntries(game.settings.delivery_trader.items.map(row=>[row.item,0]))};hero={x:0,z:0,cell:'0,0',path:[],flip:false};saveBlocked=false;resources=[];boats.clear();for(let i=0;i<19;i++)spawnResource();lastStage='';pan={x:0,z:0};mode='collect';buildMenuOpen=false;dialogPreviousPause=false;closeDialog('#new-dialog');selectMode('collect');save();notify('奶蛙的新航程开始了');};
   $('#backup').onclick=()=>{let data;try{data=saveBlocked?localStorage.getItem(STORE):JSON.stringify(game.snapshot(),null,2);}catch{}const url=URL.createObjectURL(new Blob([data||JSON.stringify(game.snapshot(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='潮汐集市-存档.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-  for(const id of ['#food-dialog','#recruit-dialog','#wanderer-dialog','#delivery-dialog','#warehouse-policy-dialog','#renbo-task-dialog','#chaorui-task-dialog','#new-dialog','#companion-dialog','#dorm-dialog'])$(id).addEventListener('cancel',event=>{event.preventDefault();closeDialog(id);});
+  for(const id of ['#food-dialog','#recruit-dialog','#wanderer-dialog','#delivery-dialog','#warehouse-policy-dialog','#voyage-route-dialog','#development-dialog','#renbo-task-dialog','#chaorui-task-dialog','#new-dialog','#companion-dialog','#dorm-dialog'])$(id).addEventListener('cancel',event=>{event.preventDefault();closeDialog(id);});
 }
 
 function resize(){w=innerWidth;h=innerHeight;dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);}
