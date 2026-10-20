@@ -37,6 +37,7 @@ export class Economy {
     this.questStats={voyages:0,salvages:0,gathered:0,expanded:0,built:0,crafted:0};
     this.questBoards={renbo:{refreshedAt:0,serial:0,tasks:[]},chaorui:{refreshedAt:0,serial:0,tasks:[]}};
     this.orderStreak=0;this.bestOrderStreak=0;this.developmentClaims=[];
+    this.arcade={tide_match:{availableAt:0,plays:0,bestMoves:null,bestSeconds:null}};
     this.construction=null;
     this.spawnVisitor();this.onChange();
   }
@@ -104,6 +105,9 @@ export class Economy {
   claimDevelopment(id){const milestone=this.developmentMilestone(id);if(!milestone)return '发展目标不存在';if(this.developmentClaims.includes(id))return '该发展奖励已经领取';if(!this.developmentReady(id))return '发展目标尚未完成';this.coins+=milestone.reward.coins||0;for(const[item,amount]of Object.entries(milestone.reward))if(item!=='coins')this.inventory[item]=this.count(item)+amount;this.developmentClaims.push(id);this.onChange();this.onNotice(`发展目标完成：${milestone.name} · ${this.rewardText(milestone.reward)}`);return '';}
   rewardText(reward){return Object.entries(reward).map(([id,amount])=>id==='coins'?`金币 +${amount}`:`${this.items[id].name} +${amount}`).join(' · ');}
   advanceOrderStreak(){this.orderStreak++;this.bestOrderStreak=Math.max(this.bestOrderStreak,this.orderStreak);const config=this.settings.order_streak;if(!config||this.orderStreak%config.step)return 0;const tier=this.orderStreak/config.step,bonus=Math.min(config.max_bonus,config.base_bonus+(tier-1)*config.bonus_step);this.coins+=bonus;return bonus;}
+  tideMatchError(now=Date.now()){const config=this.settings.minigames?.tide_match,state=this.arcade.tide_match;if(!config)return '潮汐配对尚未开放';if(this.atSea())return '返航后才能参加潮汐配对';if(this.reputation<config.reputation)return `声望 ${config.reputation} 解锁潮汐配对`;if(now<state.availableAt)return `潮汐配对准备中 · ${Math.ceil((state.availableAt-now)/1000)} 秒`;return '';}
+  tideMatchSecondsRemaining(now=Date.now()){return Math.max(0,Math.ceil((this.arcade.tide_match.availableAt-now)/1000));}
+  completeTideMatch(moves,seconds,now=Date.now(),rng=Math.random){const error=this.tideMatchError(now);if(error)return {error};const config=this.settings.minigames.tide_match,state=this.arcade.tide_match;if(!positive(moves)||moves<config.pairs||!Number.isFinite(seconds)||seconds<=0||seconds>3600)return {error:'潮汐配对成绩无效'};let coins=config.base_coins;if(moves<=config.perfect_moves)coins+=config.perfect_bonus;else if(moves<=config.efficient_moves)coins+=config.efficient_bonus;if(seconds<=config.fast_seconds)coins+=config.fast_bonus;else if(seconds<=config.steady_seconds)coins+=config.steady_bonus;const lootTable=this.settings.salvage_loot,item=lootTable[Math.min(lootTable.length-1,Math.floor(rng()*lootTable.length))].item,rolled=config.material_min+Math.floor(rng()*(config.material_max-config.material_min+1)),amount=Math.min(rolled,Math.max(0,this.capacity()-this.rawCommittedTotal()));this.coins+=coins;if(amount)this.inventory[item]=this.count(item)+amount;else coins+=5,this.coins+=5;state.availableAt=now+config.cooldown_seconds*1000;state.plays++;state.bestMoves=state.bestMoves===null?moves:Math.min(state.bestMoves,moves);state.bestSeconds=state.bestSeconds===null?seconds:Math.min(state.bestSeconds,seconds);this.onChange();const reward={coins,item:amount?item:null,amount};this.onNotice(`潮汐配对完成：${this.rewardText({coins,...(amount?{[item]:amount}:{})})}`);return {error:'',reward};}
   warehousePolicyError(policies){
     const allowed=new Set(this.settings.delivery_trader.items.map(row=>row.item));if(!policies||typeof policies!=='object'||Array.isArray(policies)||Object.keys(policies).some(id=>!allowed.has(id)))return '仓库策略无效';for(const id of allowed){const policy=policies[id];if(!policy||!nonnegative(policy.min)||(policy.max!==null&&!nonnegative(policy.max))||(policy.max!==null&&policy.max<policy.min))return `${this.items[id].name}的底线或上限无效`;}return '';
   }
@@ -287,7 +291,7 @@ export class Economy {
     const amount=this.collect(item,quantity);if(!amount)return {error:'原料仓已满'};
     this.salvageUntil=now+this.settings.salvage_seconds*1000;this.questStats.salvages++;this.gainCompanionXp();this.onChange();return {item,amount,error:''};
   }
-  snapshot(){return structuredClone({version:1,cargoCrateUpgrades:this.cargoCrateUpgrades,voyageSupplies:this.voyageSupplies,activeVoyageSupplies:this.activeVoyageSupplies,developmentClaims:this.developmentClaims,orderStreak:this.orderStreak,bestOrderStreak:this.bestOrderStreak,voyageRoute:this.voyageRoute,warehousePolicies:this.warehousePolicies,deliveryTask:this.deliveryTask,wanderer:this.wanderer,wandererClock:this.wandererClock,employeePaused:this.employeePaused,employeePausedAt:this.employeePausedAt,landmarks:this.landmarks,questStats:this.questStats,questBoards:this.questBoards,employeeMeals:this.employeeMeals,employeeJobs:this.employeeJobs,employees:this.employees,housing:this.housing,construction:this.construction,companion:this.companion,stamina:this.stamina,staminaAt:this.staminaAt,voyageUntil:this.voyageUntil,salvageUntil:this.salvageUntil,inventory:this.inventory,coins:this.coins,reputation:this.reputation,trades:this.trades,gathered:this.gathered,tiles:[...this.tiles],structures:this.structures,queue:this.queue,visitors:this.visitors,clock:this.clock,nextVisitor:this.nextVisitor,elapsed:this.elapsed});}
+  snapshot(){return structuredClone({version:1,arcade:this.arcade,cargoCrateUpgrades:this.cargoCrateUpgrades,voyageSupplies:this.voyageSupplies,activeVoyageSupplies:this.activeVoyageSupplies,developmentClaims:this.developmentClaims,orderStreak:this.orderStreak,bestOrderStreak:this.bestOrderStreak,voyageRoute:this.voyageRoute,warehousePolicies:this.warehousePolicies,deliveryTask:this.deliveryTask,wanderer:this.wanderer,wandererClock:this.wandererClock,employeePaused:this.employeePaused,employeePausedAt:this.employeePausedAt,landmarks:this.landmarks,questStats:this.questStats,questBoards:this.questBoards,employeeMeals:this.employeeMeals,employeeJobs:this.employeeJobs,employees:this.employees,housing:this.housing,construction:this.construction,companion:this.companion,stamina:this.stamina,staminaAt:this.staminaAt,voyageUntil:this.voyageUntil,salvageUntil:this.salvageUntil,inventory:this.inventory,coins:this.coins,reputation:this.reputation,trades:this.trades,gathered:this.gathered,tiles:[...this.tiles],structures:this.structures,queue:this.queue,visitors:this.visitors,clock:this.clock,nextVisitor:this.nextVisitor,elapsed:this.elapsed});}
   restore(data){
     try{
       if(!data||data.version!==1||!data.inventory||typeof data.inventory!=='object')throw Error();
@@ -305,6 +309,8 @@ export class Economy {
       const cargoCrateUpgrades=data.cargoCrateUpgrades??0;if(!nonnegative(cargoCrateUpgrades)||cargoCrateUpgrades>this.settings.cargo_crate_max)throw Error();
       const milestoneIds=(this.settings.development_milestones||[]).map(row=>row.id),developmentClaims=structuredClone(data.developmentClaims??[]);if(!Array.isArray(developmentClaims)||new Set(developmentClaims).size!==developmentClaims.length||developmentClaims.some(id=>!milestoneIds.includes(id)))throw Error();
       const orderStreak=data.orderStreak??0,bestOrderStreak=data.bestOrderStreak??orderStreak;if(!nonnegative(orderStreak)||!nonnegative(bestOrderStreak)||orderStreak>bestOrderStreak||bestOrderStreak>data.trades)throw Error();
+      const arcade=structuredClone(data.arcade??{tide_match:{availableAt:0,plays:0,bestMoves:null,bestSeconds:null}}),tideMatch=arcade?.tide_match;
+      if(!arcade||typeof arcade!=='object'||Array.isArray(arcade)||Object.keys(arcade).some(id=>id!=='tide_match')||!tideMatch||typeof tideMatch!=='object'||Array.isArray(tideMatch)||!Number.isFinite(tideMatch.availableAt)||tideMatch.availableAt<0||!nonnegative(tideMatch.plays)||(tideMatch.bestMoves!==null&&(!positive(tideMatch.bestMoves)||tideMatch.bestMoves<this.settings.minigames.tide_match.pairs))||(tideMatch.bestSeconds!==null&&(!Number.isFinite(tideMatch.bestSeconds)||tideMatch.bestSeconds<=0||tideMatch.bestSeconds>3600)))throw Error();
       for(const [id,n]of Object.entries(data.inventory))if(!this.items[id]||!nonnegative(n))throw Error();
       for(const p of ['coins','reputation','trades','gathered','nextVisitor'])if(!nonnegative(data[p]))throw Error();
       for(const p of ['clock','elapsed'])if(!Number.isFinite(data[p])||data[p]<0)throw Error();
@@ -362,6 +368,7 @@ export class Economy {
       this.developmentClaims=structuredClone(developmentClaims);
       this.orderStreak=orderStreak;
       this.bestOrderStreak=bestOrderStreak;
+      this.arcade=structuredClone(arcade);
       this.questStats=structuredClone(questStats);
       this.questBoards=structuredClone(questBoards);
       this.construction=structuredClone(construction);

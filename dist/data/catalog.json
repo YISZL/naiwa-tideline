@@ -523,6 +523,25 @@
         "reward": {"coins": 160, "repair": 2, "supply": 1}
       }
     ],
+    "minigames": {
+      "tide_match": {
+        "name": "潮汐配对",
+        "reputation": 3,
+        "cooldown_seconds": 600,
+        "pairs": 6,
+        "base_coins": 12,
+        "fast_seconds": 30,
+        "fast_bonus": 8,
+        "steady_seconds": 60,
+        "steady_bonus": 4,
+        "perfect_moves": 8,
+        "perfect_bonus": 18,
+        "efficient_moves": 10,
+        "efficient_bonus": 10,
+        "material_min": 1,
+        "material_max": 3
+      }
+    },
     "wanderer": {
       "name": "粉红蛙",
       "visit_seconds": 300,

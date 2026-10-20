@@ -10,6 +10,9 @@ let time=0,lastFrame=0,uiClock=0,spawnClock=0,saveClock=0,toastTimer,resources=[
 let storageWorks=true,started=false,drag=null,dragged=false,guideCollapsed=false,buildMenuOpen=false;
 let lastVoyage=false;
 let deliveryDraft={buy:{},sell:{}};
+let tideMatch={active:false,cards:[],open:[],matched:new Set(),moves:0,startedAt:0,locked:false,result:null};
+let tideMatchTimer=null;
+const tideSymbols=[{id:'wood',icon:'🪵'},{id:'scrap',icon:'⚙️'},{id:'cloth',icon:'🧵'},{id:'rope',icon:'🪢'},{id:'repair',icon:'🧰'},{id:'pork_rice',icon:'🍚'}];
 
 const costText=cost=>Object.entries(cost).map(([id,n])=>`${game.items[id].name} ${n}`).join(' · ');
 function notify(message){const el=$('#toast');el.textContent=message;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3300);}
@@ -109,7 +112,7 @@ function render(){
   for(const id of Object.keys(game.items)){$(`[data-count="${id}"]`)?.replaceChildren(document.createTextNode(game.count(id)));}
   $('[data-count="coins"]').textContent=game.coins;$('[data-count="reputation"]').textContent=String(game.reputation).padStart(2,'0');
   $('#pause').textContent=paused?'继续':'暂停';renderBuildMenu();renderGuide();renderRecipes();renderVisitors();renderVendor();renderWanderer();renderDelivery();renderRecruitment();renderQuestBoards();
-  renderJourney();renderRoutes();renderDevelopment();renderCompanion();renderDorm();updateHint();
+  renderJourney();renderRoutes();renderDevelopment();renderArcade();renderCompanion();renderDorm();updateHint();
   if(game.structures[hero.cell]||game.landmarkAt(hero.cell)){hero.cell=[...game.tiles].find(k=>!game.structures[k]&&!game.landmarkAt(k))||hero.cell;[hero.x,hero.z]=cell(hero.cell).map(n=>n*TILE);hero.path=[];}
 }
 function renderBuildMenu(){const open=buildMenuOpen&&!game.atSea();$('.buildbar').classList.toggle('open',open);$('#decorate-toggle').textContent=open?'收起装修':'装修';$('#decorate-toggle').classList.toggle('active',open);$$('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));}
@@ -129,6 +132,40 @@ function renderRoutes(){
 function renderDevelopment(){
   const container=$('#development-milestones');container.innerHTML=game.settings.development_milestones.map(milestone=>{const claimed=game.developmentClaims.includes(milestone.id),ready=game.developmentReady(milestone.id),requirements=milestone.requirements.map(requirement=>{const value=Math.min(requirement.goal,game.developmentRequirementValue(requirement));return `${escape(requirement.label)} ${value}/${requirement.goal}`;}).join(' · ');return `<article class="development-card${ready?' ready':''}${claimed?' claimed':''}" data-milestone="${escape(milestone.id)}"><div><strong>${escape(milestone.name)}</strong><span>${claimed?'已领取':ready?'可领取':'进行中'}</span></div><p>${escape(milestone.description)}</p><small>${requirements}</small><b>${escape(game.rewardText(milestone.reward))}</b><button class="primary" ${ready&&!claimed?'':'disabled'}>${claimed?'奖励已领取':ready?'领取奖励':'尚未完成'}</button></article>`;}).join('');
   const max=game.settings.cargo_crate_max,error=game.cargoCrateError();$('#cargo-upgrade-status').textContent=`已强化 ${game.cargoCrateUpgrades} / ${max} · 当前额外容量 +${game.cargoCrateUpgrades*game.settings.cargo_crate_capacity} · 持有货箱 ${game.count('cargo_crate')}`;const button=$('#cargo-upgrade-use');button.disabled=Boolean(error);button.textContent=error||`使用 1 件 · 容量 +${game.settings.cargo_crate_capacity}`;
+}
+function renderArcade(){
+  const config=game.settings.minigames.tide_match,state=game.arcade.tide_match,status=$('#tide-match-status'),start=$('#tide-match-start');
+  if(game.reputation<config.reputation)status.textContent=`声望 ${config.reputation} 解锁`;
+  else if(game.atSea())status.textContent='返航后才能参加';
+  else if(game.tideMatchSecondsRemaining())status.textContent=`奖励准备中 · ${formatClock(game.tideMatchSecondsRemaining())}`;
+  else status.textContent='本轮奖励已经准备好';
+  $('#tide-match-best').textContent=state.plays?`已完成 ${state.plays} 次 · 最佳 ${state.bestMoves} 次 / ${state.bestSeconds} 秒`:'尚无完成记录';
+  const error=game.tideMatchError();start.disabled=Boolean(error)||tideMatch.active;start.textContent=error||'开始配对';
+  if(tideMatch.active)$('#tide-match-time').textContent=`${Math.max(1,Math.ceil((Date.now()-tideMatch.startedAt)/1000))} 秒`;
+}
+function renderTideBoard(){
+  $('#tide-match-moves').textContent=`${tideMatch.moves} 次尝试`;
+  $('#tide-match-time').textContent=`${Math.max(1,Math.ceil((Date.now()-tideMatch.startedAt)/1000))} 秒`;
+  $('#tide-match-board').innerHTML=tideMatch.cards.map((symbol,index)=>{const open=tideMatch.open.includes(index),matched=tideMatch.matched.has(index);return `<button class="tide-card${open?' open':''}${matched?' matched':''}" data-tide-card="${index}" ${matched?'disabled':''} aria-label="${open||matched?escape(game.items[symbol.id].name):'未翻开的物资卡'}"><span class="tide-card-back">≈</span><span class="tide-card-face"><b>${symbol.icon}</b><small>${escape(game.items[symbol.id].name)}</small></span></button>`;}).join('');
+}
+function resetTideMatchView(){
+  clearTimeout(tideMatchTimer);tideMatchTimer=null;tideMatch={active:false,cards:[],open:[],matched:new Set(),moves:0,startedAt:0,locked:false,result:null};
+  $('#tide-match-ready').hidden=false;$('#tide-match-play').hidden=true;$('#tide-match-result').hidden=true;renderArcade();
+}
+function startTideMatch(){
+  const error=game.tideMatchError();if(error){notify(error);return;}
+  const cards=tideSymbols.flatMap(symbol=>[symbol,symbol]);for(let i=cards.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[cards[i],cards[j]]=[cards[j],cards[i]];}
+  tideMatch={active:true,cards,open:[],matched:new Set(),moves:0,startedAt:Date.now(),locked:false,result:null};$('#tide-match-ready').hidden=true;$('#tide-match-result').hidden=true;$('#tide-match-play').hidden=false;renderTideBoard();renderArcade();
+}
+function finishTideMatch(){
+  const seconds=Math.max(1,Math.ceil((Date.now()-tideMatch.startedAt)/1000)),result=game.completeTideMatch(tideMatch.moves,seconds);if(result.error){notify(result.error);resetTideMatchView();return;}
+  tideMatch.active=false;tideMatch.result=result;$('#tide-match-play').hidden=true;$('#tide-match-result').hidden=false;const reward={coins:result.reward.coins};if(result.reward.item)reward[result.reward.item]=result.reward.amount;$('#tide-match-reward').textContent=`${tideMatch.moves} 次尝试 · ${seconds} 秒 · 获得 ${game.rewardText(reward)}`;save();renderArcade();
+}
+function flipTideCard(index){
+  if(!tideMatch.active||tideMatch.locked||tideMatch.matched.has(index)||tideMatch.open.includes(index)||tideMatch.open.length>=2)return;tideMatch.open.push(index);
+  if(tideMatch.open.length<2){renderTideBoard();return;}tideMatch.moves++;const[a,b]=tideMatch.open;
+  if(tideMatch.cards[a].id===tideMatch.cards[b].id){tideMatch.matched.add(a);tideMatch.matched.add(b);tideMatch.open=[];renderTideBoard();if(tideMatch.matched.size===tideMatch.cards.length)finishTideMatch();return;}
+  tideMatch.locked=true;renderTideBoard();tideMatchTimer=setTimeout(()=>{tideMatch.open=[];tideMatch.locked=false;tideMatchTimer=null;if(tideMatch.active)renderTideBoard();},650);
 }
 function renderCompanion(){
   const c=game.companion,b=game.companionBonuses(),max=c.level===game.settings.companion.max_level,needed=game.companionXpNeeded();
@@ -217,6 +254,11 @@ function setupUI(){
   $('#development-close').onclick=()=>closeDialog('#development-dialog');
   $('#development-milestones').onclick=event=>{const card=event.target.closest('[data-milestone]');if(!card||!event.target.closest('button'))return;const error=game.claimDevelopment(card.dataset.milestone);notify(error||'发展奖励已领取');if(!error){renderDevelopment();save();}};
   $('#cargo-upgrade-use').onclick=()=>{const error=game.useCargoCrate();notify(error||`仓库容量永久 +${game.settings.cargo_crate_capacity}`);if(!error){renderDevelopment();save();}};
+  $('#arcade-open').onclick=$('#arcade-mobile').onclick=()=>{setSheet('none');resetTideMatchView();openDialog('#arcade-dialog');};
+  $('#arcade-close').onclick=()=>{resetTideMatchView();closeDialog('#arcade-dialog');};
+  $('#tide-match-start').onclick=startTideMatch;
+  $('#tide-match-board').onclick=event=>{const card=event.target.closest('[data-tide-card]');if(card)flipTideCard(Number(card.dataset.tideCard));};
+  $('#tide-match-done').onclick=()=>{resetTideMatchView();closeDialog('#arcade-dialog');};
   $('#voyage-route-close').onclick=()=>closeDialog('#voyage-route-dialog');
   $('#voyage-routes').onclick=event=>{const card=event.target.closest('[data-route]');if(!card||!event.target.closest('button'))return;const route=game.voyageRouteConfig(card.dataset.route),error=game.beginVoyage(card.dataset.route);if(error){notify(error);return;}closeDialog('#voyage-route-dialog');notify(`奶蛙驶向${route.name}！体力 -${route.stamina}，航行 ${route.seconds} 秒`);save();};
   $$('[data-voyage-supply]').forEach(button=>button.onclick=()=>{const id=button.dataset.voyageSupply,error=game.setVoyageSupply(id,!game.voyageSupplies[id]);if(error)notify(error);else{renderRoutes();save();}});
@@ -245,7 +287,7 @@ function setupUI(){
   $('#pause').onclick=()=>{paused=!paused;render();};$('#save').onclick=()=>save(true);$('#new').onclick=()=>openDialog('#new-dialog');$('#cancel-new').onclick=()=>closeDialog('#new-dialog');
   $('#confirm-new').onclick=()=>{game.reset();deliveryDraft={buy:Object.fromEntries(game.settings.delivery_trader.items.map(row=>[row.item,0])),sell:Object.fromEntries(game.settings.delivery_trader.items.map(row=>[row.item,0]))};hero={x:0,z:0,cell:'0,0',path:[],flip:false};saveBlocked=false;resources=[];boats.clear();for(let i=0;i<19;i++)spawnResource();lastStage='';pan={x:0,z:0};mode='collect';buildMenuOpen=false;dialogPreviousPause=false;closeDialog('#new-dialog');selectMode('collect');save();notify('奶蛙的新航程开始了');};
   $('#backup').onclick=()=>{let data;try{data=saveBlocked?localStorage.getItem(STORE):JSON.stringify(game.snapshot(),null,2);}catch{}const url=URL.createObjectURL(new Blob([data||JSON.stringify(game.snapshot(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='潮汐集市-存档.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-  for(const id of ['#food-dialog','#recruit-dialog','#wanderer-dialog','#delivery-dialog','#warehouse-policy-dialog','#voyage-route-dialog','#development-dialog','#renbo-task-dialog','#chaorui-task-dialog','#new-dialog','#companion-dialog','#dorm-dialog'])$(id).addEventListener('cancel',event=>{event.preventDefault();closeDialog(id);});
+  for(const id of ['#food-dialog','#recruit-dialog','#wanderer-dialog','#delivery-dialog','#warehouse-policy-dialog','#voyage-route-dialog','#development-dialog','#arcade-dialog','#renbo-task-dialog','#chaorui-task-dialog','#new-dialog','#companion-dialog','#dorm-dialog'])$(id).addEventListener('cancel',event=>{event.preventDefault();if(id==='#arcade-dialog')resetTideMatchView();closeDialog(id);});
 }
 
 function resize(){w=innerWidth;h=innerHeight;dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);}
@@ -428,7 +470,7 @@ function bindInput(){
   addEventListener('keydown',e=>{if(['Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();if(e.target.closest('button,dialog,input,select'))return;if($$('dialog').some(d=>d.open))return;if(e.code==='Escape'){buildMenuOpen=false;selectMode('collect');setSheet('none');}if(e.code==='Space'&&!e.repeat){paused=!paused;render();}if(e.code==='KeyR')rotation=(rotation+1)%4;if(e.code==='KeyF'){pan={x:0,z:0};yaw=.65;}if(e.code==='F5'){e.preventDefault();save(true);}keys.add(e.code);});addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());
   document.addEventListener('visibilitychange',()=>{keys.clear();if(document.hidden)save();lastFrame=0;});addEventListener('pagehide',()=>save());
 }
-function frame(now){const dt=lastFrame?Math.min((now-lastFrame)/1000,.1):0;lastFrame=now;if(!document.hidden){update(dt);draw();uiClock+=dt;if(uiClock>.15){uiClock=0;renderRecipes();renderVisitors();renderJourney();renderCompanion();if($('#food-dialog').open)renderVendor();if($('#recruit-dialog').open)renderRecruitment();if($('#wanderer-dialog').open)renderWanderer();if($('#delivery-dialog').open)renderDelivery();if($('#renbo-task-dialog').open||$('#chaorui-task-dialog').open)renderQuestBoards();if($('#dorm-dialog').open)renderDorm();}}requestAnimationFrame(frame);}
+function frame(now){const dt=lastFrame?Math.min((now-lastFrame)/1000,.1):0;lastFrame=now;if(!document.hidden){update(dt);draw();uiClock+=dt;if(uiClock>.15){uiClock=0;renderRecipes();renderVisitors();renderJourney();renderCompanion();if($('#food-dialog').open)renderVendor();if($('#recruit-dialog').open)renderRecruitment();if($('#wanderer-dialog').open)renderWanderer();if($('#delivery-dialog').open)renderDelivery();if($('#arcade-dialog').open)renderArcade();if($('#renbo-task-dialog').open||$('#chaorui-task-dialog').open)renderQuestBoards();if($('#dorm-dialog').open)renderDorm();}}requestAnimationFrame(frame);}
 function loadCharacter(row){return new Promise((resolve,reject)=>{const image=new Image();image.decoding='async';image.onload=()=>{images[row.id]=image;resolve();};image.onerror=()=>reject(Error(`角色图片无法加载：${row.name}`));image.src=row.image;});}
 async function start(){
   try{
