@@ -83,11 +83,10 @@
     },
     {
       "id": "slave_contract",
-      "name": "奴隶契约（未实装）",
-      "kind": "placeholder",
+      "name": "奴隶契约",
+      "kind": "contract",
       "color": "cf8fbd",
-      "hide_topbar": true,
-      "implemented": false
+      "hide_topbar": true
     },
     {
       "id": "skin_ticket",
@@ -471,7 +470,8 @@
     "max_grid_radius": 8,
     "visitor_seconds": 180,
     "arrival_seconds": 12,
-    "queue_limit": 3,
+    "queue_limit": 1,
+    "queue_legacy_limit": 3,
     "order_streak": {
       "step": 3,
       "base_bonus": 10,
@@ -524,6 +524,9 @@
       }
     ],
     "minigames": {
+      "salvage_hook": {
+        "max_bonus": 3
+      },
       "tide_match": {
         "name": "潮汐配对",
         "reputation": 3,
@@ -614,11 +617,19 @@
         },
         {
           "item": "slave_contract",
+          "employee": "zihao",
           "quantity_min": 1,
           "quantity_max": 1,
           "price_min": 80,
-          "price_max": 240,
-          "implemented": false
+          "price_max": 240
+        },
+        {
+          "item": "slave_contract",
+          "employee": "haozi",
+          "quantity_min": 1,
+          "quantity_max": 1,
+          "price_min": 80,
+          "price_max": 240
         },
         {
           "item": "skin_ticket",

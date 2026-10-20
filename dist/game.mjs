@@ -13,6 +13,7 @@ let deliveryDraft={buy:{},sell:{}};
 let tideMatch={active:false,cards:[],open:[],matched:new Set(),moves:0,startedAt:0,locked:false,result:null};
 let tideMatchTimer=null;
 const tideSymbols=[{id:'wood',icon:'🪵'},{id:'scrap',icon:'⚙️'},{id:'cloth',icon:'🧵'},{id:'rope',icon:'🪢'},{id:'repair',icon:'🧰'},{id:'pork_rice',icon:'🍚'}];
+let salvageGame={active:false,phase:'idle',angle:0,direction:1,length:44,target:null,targets:[]};
 
 const costText=cost=>Object.entries(cost).map(([id,n])=>`${game.items[id].name} ${n}`).join(' · ');
 function notify(message){const el=$('#toast');el.textContent=message;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3300);}
@@ -39,7 +40,7 @@ function renderRecipes(){
     const active=game.queue[0]?.recipe===r.id;card.querySelector('.progress i').style.width=active?`${(1-game.queue[0].remaining/r.seconds)*100}%`:'0%';
   }
   $('#workshop-status').textContent=game.has('workshop')?'可制作':'待建造';
-  $('#queue').textContent=`制作队列 ${game.queue.length} / ${game.settings.queue_limit}`+(game.queue.length?'\n'+game.queue.map(t=>game.items[game.recipes[t.recipe].output].name).join(' → '):'');
+  const queueLimit=game.productionQueueLimit(),legacyQueue=game.queue.length>queueLimit;$('#queue').textContent=`制作队列 ${game.queue.length} / ${queueLimit} · 每名豪自 +1${legacyQueue?' · 旧队列完成后按新上限':''}`+(game.queue.length?'\n'+game.queue.map(t=>game.items[game.recipes[t.recipe].output].name).join(' → '):'');
   $('#capacity').textContent=`原料仓 ${game.rawCommittedTotal()} / ${game.capacity()}${game.deliveryReservedRaw()?`（配送预留 ${game.deliveryReservedRaw()}）`:''} · 浮岛 ${game.tiles.size} 格`+(game.construction?`\n便正在扩建 · ${Math.ceil(game.construction.remaining)} 秒`:'\n便 · 负责浮岛扩建');
   $('#warehouse-policy-summary').textContent=game.settings.delivery_trader.items.map(row=>{const p=game.warehousePolicies[row.item];return `${game.items[row.item].name} ${p.min}～${p.max===null?'不限':p.max}`;}).join(' · ');
   updateHint();
@@ -73,7 +74,7 @@ function renderVendor(){
 function renderWanderer(){
   const merchant=game.wanderer,container=$('#wanderer-offers');
   if(!merchant){container.innerHTML='<div class="quest-empty">粉红蛙已经离港</div>';$('#wanderer-wallet').textContent=`奶蛙的金币：${game.coins}`;$('#wanderer-timer').textContent=`距离下次必定出现 ${formatClock(game.wandererNextSeconds())}`;return;}
-  container.innerHTML=merchant.offers.map((offer,index)=>{const item=game.items[offer.item],error=game.wandererPurchaseError(index),preview=!offer.implemented||item.implemented===false;return `<article class="wanderer-offer${preview?' preview':''}"><div><strong>${escape(item.name)}</strong><span>${offer.price} 金币 / 件</span></div><p>本次库存 ${offer.quantity}${preview?' · 后续版本开放':` · 已拥有 ${game.count(offer.item)}`}</p><button class="primary" data-wanderer-offer="${index}" ${error?'disabled':''}>${escape(error||'购买 1 件')}</button></article>`;}).join('');
+  container.innerHTML=merchant.offers.map((offer,index)=>{const item=game.items[offer.item],error=game.wandererPurchaseError(index),preview=!offer.implemented||item.implemented===false,name=offer.employee?`${game.settings.employees[offer.employee].name}奴隶契约`:item.name,owned=offer.employee?`普通 ${game.regularEmployeeCount(offer.employee)} / ${game.settings.employees[offer.employee].max} · 契约 ${game.contractEmployeeCount(offer.employee)}`:`已拥有 ${game.count(offer.item)}`;return `<article class="wanderer-offer${preview?' preview':''}"><div><strong>${escape(name)}</strong><span>${offer.price} 金币 / 件</span></div><p>本次库存 ${offer.quantity}${preview?' · 后续版本开放':` · ${owned}`}</p><button class="primary" data-wanderer-offer="${index}" ${error?'disabled':''}>${escape(error||(offer.employee?'签下契约':'购买 1 件'))}</button></article>`;}).join('');
   $$('[data-wanderer-offer]').forEach(button=>button.onclick=()=>{const error=game.buyWanderer(Number(button.dataset.wandererOffer));notify(error||'购买成功');renderWanderer();if(!error)save();});
   $('#wanderer-wallet').textContent=`奶蛙的金币：${game.coins}`;$('#wanderer-timer').textContent=`粉红蛙将在 ${formatClock(Math.ceil(merchant.remaining))} 后离港 · 再次出现时库存和价格会全部刷新`;
 }
@@ -85,11 +86,11 @@ function renderDelivery(){
   const summary=game.deliverySummary(deliveryDraft.buy,deliveryDraft.sell),error=game.deliveryTradeError(deliveryDraft.buy,deliveryDraft.sell),settlement=summary.coinCharge?`需支付 ${summary.coinCharge} 金币`:summary.coinPayout?`完成后到账 ${summary.coinPayout} 金币`:'无需金币结算';$('#delivery-summary').textContent=`购买 ${summary.buyTotal} 份（${summary.buyCost} 金） · 售卖 ${summary.sellTotal} 份（${summary.sellRevenue} 金） · ${settlement}`;const button=$('#delivery-submit');button.disabled=Boolean(error);button.textContent=error||'确认配送任务';
 }
 function renderRecruitment(){
-  const config=game.settings.employees.zihao,count=game.employeeCount('zihao'),working=game.employeeWorkingCount('zihao'),error=game.hireEmployeeError('zihao'),zihaoPaused=game.employeePaused.zihao;
-  $('#zihao-status').textContent=`已招募 ${count} / ${config.max} · 工作中 ${working} · 停工 ${count-working}${zihaoPaused?'（手动）':''}`;
+  const config=game.settings.employees.zihao,count=game.employeeCount('zihao'),regular=game.regularEmployeeCount('zihao'),contract=game.contractEmployeeCount('zihao'),working=game.employeeWorkingCount('zihao'),error=game.hireEmployeeError('zihao'),zihaoPaused=game.employeePaused.zihao;
+  $('#zihao-status').textContent=`普通招募 ${regular} / ${config.max} · 契约 ${contract} · 工作中 ${working} · 停工 ${count-working}${zihaoPaused?'（手动）':''}`;
   $('#zihao-timer').textContent=count?(zihaoPaused?`已手动停止 · 航行剩余 ${formatClock(game.employeeSecondsRemaining('zihao'))}`:working?`下一艘船 ${formatClock(game.employeeSecondsRemaining('zihao'))} 后返航`:'缺少猪脚饭，船队已停工'):'尚未组建船队';
-  const maker=game.settings.employees.haozi,makerCount=game.employeeCount('haozi'),makerWorking=game.employeeWorkingCount('haozi'),makerError=game.hireEmployeeError('haozi'),busy=game.employeeJobs.haozi.filter(Boolean).length,haoziPaused=game.employeePaused.haozi;
-  $('#haozi-status').textContent=`已招募 ${makerCount} / ${maker.max} · 工作中 ${makerWorking} · 停工 ${makerCount-makerWorking}${haoziPaused?'（手动）':''}`;
+  const maker=game.settings.employees.haozi,makerCount=game.employeeCount('haozi'),makerRegular=game.regularEmployeeCount('haozi'),makerContract=game.contractEmployeeCount('haozi'),makerWorking=game.employeeWorkingCount('haozi'),makerError=game.hireEmployeeError('haozi'),busy=game.employeeJobs.haozi.filter(Boolean).length,haoziPaused=game.employeePaused.haozi;
+  $('#haozi-status').textContent=`普通招募 ${makerRegular} / ${maker.max} · 契约 ${makerContract} · 生产队列 ${game.productionQueueLimit()} · 工作中 ${makerWorking} · 停工 ${makerCount-makerWorking}${haoziPaused?'（手动）':''}`;
   $('#haozi-timer').textContent=makerCount?(haoziPaused?'已手动停止 · 当前加工进度已冻结':makerWorking?`正在加工 ${busy} 单 · 等待材料或订单 ${makerWorking-busy} 人`:'缺少猪脚饭，自动加工已停止'):'尚未安排自动加工';
   $('#recruit-wallet').textContent=`奶蛙的金币：${game.coins}`;
   const button=$('#hire-zihao');button.disabled=Boolean(error);button.textContent=error||`招募自豪 · ${config.price} 金币`;
@@ -123,7 +124,7 @@ function renderJourney(){
   const wait=Math.max(0,Math.ceil((game.settings.stamina_regen_seconds*1000-(Date.now()-game.staminaAt))/1000));
   $('#stamina-recovery').textContent=game.stamina===game.settings.max_stamina?'每小时回复 1 点':`${Math.floor(wait/60)}:${String(wait%60).padStart(2,'0')} 后回复 1 点`;
   const route=game.voyageRouteConfig(),b=$('#voyage-button'),left=Math.max(0,Math.ceil((game.voyageUntil-Date.now())/1000));b.textContent=game.atSea()?`返航 · ${route.name} ${left} 秒`:'选择航线 · 出海';b.disabled=paused;
-  const salvage=$('#salvage-button'),error=game.salvageError();salvage.hidden=!game.atSea();salvage.textContent=error||'随机打捞';salvage.disabled=paused||Boolean(error);
+  const salvage=$('#salvage-button'),error=game.salvageError();salvage.hidden=!game.atSea();salvage.textContent=error||'手动打捞';salvage.disabled=paused||Boolean(error);
 }
 function renderRoutes(){
   for(const route of game.settings.voyage_routes){const card=$(`[data-route="${route.id}"]`);if(!card)continue;const error=game.voyageRouteError(route.id),button=card.querySelector('button');card.classList.toggle('locked',game.reputation<route.reputation);card.querySelector('.route-status').textContent=game.reputation<route.reputation?`声望 ${route.reputation} 解锁`:`${route.stamina} 体力 · ${route.seconds} 秒`;button.disabled=Boolean(error);button.textContent=error||`选择${route.name}`;}
@@ -167,6 +168,31 @@ function flipTideCard(index){
   if(tideMatch.cards[a].id===tideMatch.cards[b].id){tideMatch.matched.add(a);tideMatch.matched.add(b);tideMatch.open=[];renderTideBoard();if(tideMatch.matched.size===tideMatch.cards.length)finishTideMatch();return;}
   tideMatch.locked=true;renderTideBoard();tideMatchTimer=setTimeout(()=>{tideMatch.open=[];tideMatch.locked=false;tideMatchTimer=null;if(tideMatch.active)renderTideBoard();},650);
 }
+function drawSalvageGame(){
+  const canvas=$('#salvage-game'),hookCtx=canvas.getContext('2d'),anchor={x:canvas.width/2,y:28},tip={x:anchor.x+Math.sin(salvageGame.angle)*salvageGame.length,y:anchor.y+Math.cos(salvageGame.angle)*salvageGame.length};
+  const gradient=hookCtx.createLinearGradient(0,0,0,canvas.height);gradient.addColorStop(0,'#82c9c8');gradient.addColorStop(.35,'#2f8491');gradient.addColorStop(1,'#123f55');hookCtx.fillStyle=gradient;hookCtx.fillRect(0,0,canvas.width,canvas.height);
+  hookCtx.strokeStyle='#d7f3e8';hookCtx.globalAlpha=.18;for(let y=55;y<canvas.height;y+=38){hookCtx.beginPath();hookCtx.moveTo(0,y);hookCtx.quadraticCurveTo(canvas.width/2,y+12,canvas.width,y);hookCtx.stroke();}hookCtx.globalAlpha=1;
+  for(const target of salvageGame.targets){if(target===salvageGame.target)continue;hookCtx.beginPath();hookCtx.fillStyle=target.color;hookCtx.arc(target.x,target.y,target.r,0,Math.PI*2);hookCtx.fill();hookCtx.strokeStyle='#fff4c6';hookCtx.lineWidth=2;hookCtx.stroke();hookCtx.fillStyle='#fff';hookCtx.font='22px system-ui';hookCtx.textAlign='center';hookCtx.fillText(target.icon,target.x,target.y+7);hookCtx.font='600 11px "Microsoft YaHei",sans-serif';hookCtx.fillText(`额外 +${target.bonus}`,target.x,target.y+target.r+16);}
+  hookCtx.strokeStyle='#f8e5aa';hookCtx.lineWidth=3;hookCtx.beginPath();hookCtx.moveTo(anchor.x,anchor.y);hookCtx.lineTo(tip.x,tip.y);hookCtx.stroke();hookCtx.fillStyle='#f2c66f';hookCtx.beginPath();hookCtx.arc(anchor.x,anchor.y,9,0,Math.PI*2);hookCtx.fill();hookCtx.strokeStyle='#f8e5aa';hookCtx.lineWidth=4;hookCtx.beginPath();hookCtx.moveTo(tip.x-8,tip.y-5);hookCtx.lineTo(tip.x,tip.y+7);hookCtx.lineTo(tip.x+8,tip.y-5);hookCtx.stroke();
+  if(salvageGame.target){hookCtx.beginPath();hookCtx.fillStyle=salvageGame.target.color;hookCtx.arc(tip.x,tip.y+15,salvageGame.target.r*.72,0,Math.PI*2);hookCtx.fill();hookCtx.fillStyle='#fff';hookCtx.font='18px system-ui';hookCtx.fillText(salvageGame.target.icon,tip.x,tip.y+21);}
+}
+function resetSalvageGame(){
+  salvageGame={active:true,phase:'aim',angle:-.65,direction:1,length:44,target:null,targets:[{x:78,y:205,r:27,bonus:1,icon:'🪵',color:'#a77b50'},{x:168,y:142,r:22,bonus:2,icon:'⚙️',color:'#81949a'},{x:303,y:215,r:29,bonus:1,icon:'🧵',color:'#c48e70'},{x:395,y:142,r:20,bonus:3,icon:'💎',color:'#9d83d0'}]};
+  $('#salvage-game-status').textContent='吊钩摆动中 · 看准方向点击下钩';$('#salvage-game-drop').hidden=false;$('#salvage-game-drop').disabled=false;$('#salvage-game-result').hidden=true;drawSalvageGame();
+}
+function dropSalvageHook(){if(salvageGame.phase!=='aim')return;salvageGame.phase='extend';$('#salvage-game-drop').disabled=true;$('#salvage-game-status').textContent='吊钩下潜中…';}
+function finishSalvageGame(){
+  const bonus=salvageGame.target?.bonus||0,level=game.companion.level,result=game.salvage(Date.now(),Math.random,bonus);salvageGame.active=false;salvageGame.phase='result';$('#salvage-game-drop').hidden=true;$('#salvage-game-result').hidden=false;
+  if(result.error){$('#salvage-game-status').textContent='本轮打捞未完成';$('#salvage-game-reward').textContent=result.error;return;}
+  $('#salvage-game-status').textContent=bonus?`命中物资 · 手动加成 +${bonus}`:'吊钩落空 · 获得基础打捞量';$('#salvage-game-reward').textContent=`获得 ${game.items[result.item].name} +${result.amount}${bonus?`（含手动加成 +${bonus}）`:''}${game.companion.level>level?` · 樾升到 Lv.${game.companion.level}`:''}`;save();
+}
+function updateSalvageGame(dt){
+  if(!$('#salvage-game-dialog').open||!salvageGame.active)return;
+  if(salvageGame.phase==='aim'){salvageGame.angle+=salvageGame.direction*dt*1.35;if(Math.abs(salvageGame.angle)>=1.02){salvageGame.angle=Math.sign(salvageGame.angle)*1.02;salvageGame.direction*=-1;}}
+  else if(salvageGame.phase==='extend'){salvageGame.length+=dt*225;const tip={x:240+Math.sin(salvageGame.angle)*salvageGame.length,y:28+Math.cos(salvageGame.angle)*salvageGame.length},hit=salvageGame.targets.find(target=>Math.hypot(tip.x-target.x,tip.y-target.y)<=target.r+9);if(hit){salvageGame.target=hit;salvageGame.phase='retract';$('#salvage-game-status').textContent=`钩中物资 · 额外 +${hit.bonus}`;}else if(salvageGame.length>=280){salvageGame.phase='retract';$('#salvage-game-status').textContent='没有钩中，正在收钩…';}}
+  else if(salvageGame.phase==='retract'){salvageGame.length-=dt*265;if(salvageGame.length<=44){salvageGame.length=44;finishSalvageGame();}}
+  drawSalvageGame();
+}
 function renderCompanion(){
   const c=game.companion,b=game.companionBonuses(),max=c.level===game.settings.companion.max_level,needed=game.companionXpNeeded();
   const state=c.equipped?'同行':game.housing.dorm?'住宿':'休息';
@@ -197,7 +223,7 @@ function renderDorm(){
 }
 function updateHint(){
   if(game.construction&&!game.atSea()){$('#mode-hint').textContent=`便正在扩建 · 还需 ${Math.ceil(game.construction.remaining)} 秒`;return;}
-  if(game.atSea()){$('#mode-hint').textContent=`${game.voyageRouteConfig().name} · 随机打捞为主，海面物资可直接拾取`;return;}
+  if(game.atSea()){$('#mode-hint').textContent=`${game.voyageRouteConfig().name} · 手动下钩可增加收益，海面物资也可直接拾取`;return;}
   if(mode==='decorate'){$('#mode-hint').textContent=decorateSelection?`已选择${decorateSelection.name} · 点击目标平台完成移动`:'装修模式 · 点击建筑或地标，再点击目标平台';return;}
   $('#mode-hint').textContent=mode==='collect'?'小岛上无法打捞 · 点击出海，或吃饭补充体力':hover?game.placementError(mode,hover)||(mode==='expand'?'点击扩建平台':`点击建造${game.buildings[mode].name} · R 旋转`):'点击空平台放置，右键取消';
 }
@@ -283,11 +309,14 @@ function setupUI(){
   $('#dorm-action').onclick=()=>{const error=game.housing.dorm===$('#dorm-room').value?game.unhouseCompanion():game.houseCompanion($('#dorm-room').value);if(error)notify(error);else save();};
   $('#eat-food').onclick=()=>{const error=game.eatFood();if(error)notify(error);else save();};
   $('#voyage-button').onclick=()=>{if(paused)return;if(game.atSea()){game.returnHome();save();return;}buildMenuOpen=false;mode='collect';selectMode('collect');openDialog('#voyage-route-dialog');};
-  $('#salvage-button').onclick=()=>{if(paused)return;const level=game.companion.level,result=game.salvage();notify(result.error||`随机打捞：${game.items[result.item].name} +${result.amount}${game.companion.level>level?` · 樾升到 Lv.${game.companion.level}！`:''}`);if(!result.error)save();};
+  $('#salvage-button').onclick=()=>{if(paused)return;const error=game.salvageError();if(error){notify(error);return;}resetSalvageGame();openDialog('#salvage-game-dialog');};
+  $('#salvage-game-drop').onclick=dropSalvageHook;$('#salvage-game').onclick=dropSalvageHook;
+  $('#salvage-game-close').onclick=()=>{salvageGame.active=false;closeDialog('#salvage-game-dialog');};
+  $('#salvage-game-done').onclick=()=>closeDialog('#salvage-game-dialog');
   $('#pause').onclick=()=>{paused=!paused;render();};$('#save').onclick=()=>save(true);$('#new').onclick=()=>openDialog('#new-dialog');$('#cancel-new').onclick=()=>closeDialog('#new-dialog');
   $('#confirm-new').onclick=()=>{game.reset();deliveryDraft={buy:Object.fromEntries(game.settings.delivery_trader.items.map(row=>[row.item,0])),sell:Object.fromEntries(game.settings.delivery_trader.items.map(row=>[row.item,0]))};hero={x:0,z:0,cell:'0,0',path:[],flip:false};saveBlocked=false;resources=[];boats.clear();for(let i=0;i<19;i++)spawnResource();lastStage='';pan={x:0,z:0};mode='collect';buildMenuOpen=false;dialogPreviousPause=false;closeDialog('#new-dialog');selectMode('collect');save();notify('奶蛙的新航程开始了');};
   $('#backup').onclick=()=>{let data;try{data=saveBlocked?localStorage.getItem(STORE):JSON.stringify(game.snapshot(),null,2);}catch{}const url=URL.createObjectURL(new Blob([data||JSON.stringify(game.snapshot(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='潮汐集市-存档.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-  for(const id of ['#food-dialog','#recruit-dialog','#wanderer-dialog','#delivery-dialog','#warehouse-policy-dialog','#voyage-route-dialog','#development-dialog','#arcade-dialog','#renbo-task-dialog','#chaorui-task-dialog','#new-dialog','#companion-dialog','#dorm-dialog'])$(id).addEventListener('cancel',event=>{event.preventDefault();if(id==='#arcade-dialog')resetTideMatchView();closeDialog(id);});
+  for(const id of ['#food-dialog','#recruit-dialog','#wanderer-dialog','#delivery-dialog','#warehouse-policy-dialog','#voyage-route-dialog','#salvage-game-dialog','#development-dialog','#arcade-dialog','#renbo-task-dialog','#chaorui-task-dialog','#new-dialog','#companion-dialog','#dorm-dialog'])$(id).addEventListener('cancel',event=>{event.preventDefault();if(id==='#arcade-dialog')resetTideMatchView();if(id==='#salvage-game-dialog')salvageGame.active=false;closeDialog(id);});
 }
 
 function resize(){w=innerWidth;h=innerHeight;dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);}
@@ -470,7 +499,7 @@ function bindInput(){
   addEventListener('keydown',e=>{if(['Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();if(e.target.closest('button,dialog,input,select'))return;if($$('dialog').some(d=>d.open))return;if(e.code==='Escape'){buildMenuOpen=false;selectMode('collect');setSheet('none');}if(e.code==='Space'&&!e.repeat){paused=!paused;render();}if(e.code==='KeyR')rotation=(rotation+1)%4;if(e.code==='KeyF'){pan={x:0,z:0};yaw=.65;}if(e.code==='F5'){e.preventDefault();save(true);}keys.add(e.code);});addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>keys.clear());
   document.addEventListener('visibilitychange',()=>{keys.clear();if(document.hidden)save();lastFrame=0;});addEventListener('pagehide',()=>save());
 }
-function frame(now){const dt=lastFrame?Math.min((now-lastFrame)/1000,.1):0;lastFrame=now;if(!document.hidden){update(dt);draw();uiClock+=dt;if(uiClock>.15){uiClock=0;renderRecipes();renderVisitors();renderJourney();renderCompanion();if($('#food-dialog').open)renderVendor();if($('#recruit-dialog').open)renderRecruitment();if($('#wanderer-dialog').open)renderWanderer();if($('#delivery-dialog').open)renderDelivery();if($('#arcade-dialog').open)renderArcade();if($('#renbo-task-dialog').open||$('#chaorui-task-dialog').open)renderQuestBoards();if($('#dorm-dialog').open)renderDorm();}}requestAnimationFrame(frame);}
+function frame(now){const dt=lastFrame?Math.min((now-lastFrame)/1000,.1):0;lastFrame=now;if(!document.hidden){update(dt);draw();updateSalvageGame(dt);uiClock+=dt;if(uiClock>.15){uiClock=0;renderRecipes();renderVisitors();renderJourney();renderCompanion();if($('#food-dialog').open)renderVendor();if($('#recruit-dialog').open)renderRecruitment();if($('#wanderer-dialog').open)renderWanderer();if($('#delivery-dialog').open)renderDelivery();if($('#arcade-dialog').open)renderArcade();if($('#renbo-task-dialog').open||$('#chaorui-task-dialog').open)renderQuestBoards();if($('#dorm-dialog').open)renderDorm();}}requestAnimationFrame(frame);}
 function loadCharacter(row){return new Promise((resolve,reject)=>{const image=new Image();image.decoding='async';image.onload=()=>{images[row.id]=image;resolve();};image.onerror=()=>reject(Error(`角色图片无法加载：${row.name}`));image.src=row.image;});}
 async function start(){
   try{
