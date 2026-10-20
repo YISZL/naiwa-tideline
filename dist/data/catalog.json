@@ -543,6 +543,20 @@
         "efficient_bonus": 10,
         "material_min": 1,
         "material_max": 3
+      },
+      "cargo_merge": {
+        "name": "仓库拼箱",
+        "reputation": 6,
+        "cooldown_seconds": 1200,
+        "move_limit": 24,
+        "spawn_two_chance": 0.15,
+        "reward_tiers": [
+          {"tile": 2, "coins": 8, "material": 1},
+          {"tile": 4, "coins": 14, "material": 2},
+          {"tile": 8, "coins": 24, "material": 3},
+          {"tile": 16, "coins": 40, "material": 4},
+          {"tile": 32, "coins": 60, "material": 5}
+        ]
       }
     },
     "wanderer": {

@@ -3,6 +3,24 @@ export const cell = k => k.split(',').map(Number);
 export const directions = [[1,0],[-1,0],[0,1],[0,-1]];
 const positive = n => Number.isSafeInteger(n) && n > 0;
 const nonnegative = n => Number.isSafeInteger(n) && n >= 0;
+export function mergeCargoLine(line){
+  const compact=line.filter(Boolean),merged=[],score=0;let gained=score;
+  for(let i=0;i<compact.length;i++){
+    if(compact[i]===compact[i+1]){const value=compact[i]*2;merged.push(value);gained+=value;i++;}
+    else merged.push(compact[i]);
+  }
+  while(merged.length<4)merged.push(0);
+  return {line:merged,score:gained,moved:merged.some((value,index)=>value!==line[index])};
+}
+export function moveCargoBoard(board,direction){
+  if(!Array.isArray(board)||board.length!==16||!['left','right','up','down'].includes(direction))return {board:[...board],score:0,moved:false};
+  const next=[...board];let score=0,moved=false;
+  for(let outer=0;outer<4;outer++){
+    const indices=[];for(let inner=0;inner<4;inner++){const x=direction==='left'?inner:direction==='right'?3-inner:outer,y=direction==='up'?inner:direction==='down'?3-inner:outer;indices.push(y*4+x);}
+    const result=mergeCargoLine(indices.map(index=>board[index]));score+=result.score;moved||=result.moved;indices.forEach((index,position)=>next[index]=result.line[position]);
+  }
+  return {board:next,score,moved};
+}
 export class Economy {
   constructor(catalog) {
     this.catalog = catalog;
@@ -38,7 +56,7 @@ export class Economy {
     this.questStats={voyages:0,salvages:0,gathered:0,expanded:0,built:0,crafted:0};
     this.questBoards={renbo:{refreshedAt:0,serial:0,tasks:[]},chaorui:{refreshedAt:0,serial:0,tasks:[]}};
     this.orderStreak=0;this.bestOrderStreak=0;this.developmentClaims=[];
-    this.arcade={tide_match:{availableAt:0,plays:0,bestMoves:null,bestSeconds:null}};
+    this.arcade={tide_match:{availableAt:0,plays:0,bestMoves:null,bestSeconds:null},cargo_merge:{availableAt:0,plays:0,bestTile:0,bestScore:0}};
     this.construction=null;
     this.spawnVisitor();this.onChange();
   }
@@ -110,6 +128,14 @@ export class Economy {
   tideMatchError(now=Date.now()){const config=this.settings.minigames?.tide_match,state=this.arcade.tide_match;if(!config)return '潮汐配对尚未开放';if(this.atSea())return '返航后才能参加潮汐配对';if(this.reputation<config.reputation)return `声望 ${config.reputation} 解锁潮汐配对`;if(now<state.availableAt)return `潮汐配对准备中 · ${Math.ceil((state.availableAt-now)/1000)} 秒`;return '';}
   tideMatchSecondsRemaining(now=Date.now()){return Math.max(0,Math.ceil((this.arcade.tide_match.availableAt-now)/1000));}
   completeTideMatch(moves,seconds,now=Date.now(),rng=Math.random){const error=this.tideMatchError(now);if(error)return {error};const config=this.settings.minigames.tide_match,state=this.arcade.tide_match;if(!positive(moves)||moves<config.pairs||!Number.isFinite(seconds)||seconds<=0||seconds>3600)return {error:'潮汐配对成绩无效'};let coins=config.base_coins;if(moves<=config.perfect_moves)coins+=config.perfect_bonus;else if(moves<=config.efficient_moves)coins+=config.efficient_bonus;if(seconds<=config.fast_seconds)coins+=config.fast_bonus;else if(seconds<=config.steady_seconds)coins+=config.steady_bonus;const lootTable=this.settings.salvage_loot,item=lootTable[Math.min(lootTable.length-1,Math.floor(rng()*lootTable.length))].item,rolled=config.material_min+Math.floor(rng()*(config.material_max-config.material_min+1)),amount=Math.min(rolled,Math.max(0,this.capacity()-this.rawCommittedTotal()));this.coins+=coins;if(amount)this.inventory[item]=this.count(item)+amount;else coins+=5,this.coins+=5;state.availableAt=now+config.cooldown_seconds*1000;state.plays++;state.bestMoves=state.bestMoves===null?moves:Math.min(state.bestMoves,moves);state.bestSeconds=state.bestSeconds===null?seconds:Math.min(state.bestSeconds,seconds);this.onChange();const reward={coins,item:amount?item:null,amount};this.onNotice(`潮汐配对完成：${this.rewardText({coins,...(amount?{[item]:amount}:{})})}`);return {error:'',reward};}
+  cargoMergeError(now=Date.now()){const config=this.settings.minigames?.cargo_merge,state=this.arcade.cargo_merge;if(!config)return '仓库拼箱尚未开放';if(this.atSea())return '返航后才能整理货箱';if(this.reputation<config.reputation)return `声望 ${config.reputation} 解锁仓库拼箱`;if(now<state.availableAt)return `仓库拼箱准备中 · ${Math.ceil((state.availableAt-now)/1000)} 秒`;return '';}
+  cargoMergeSecondsRemaining(now=Date.now()){return Math.max(0,Math.ceil((this.arcade.cargo_merge.availableAt-now)/1000));}
+  completeCargoMerge(maxTile,score,moves,now=Date.now(),rng=Math.random){
+    const error=this.cargoMergeError(now);if(error)return {error};const config=this.settings.minigames.cargo_merge,state=this.arcade.cargo_merge;
+    if(!positive(maxTile)||(maxTile&(maxTile-1))!==0||maxTile>1024||!nonnegative(score)||!positive(moves)||moves>config.move_limit)return {error:'仓库拼箱成绩无效'};
+    const tier=[...config.reward_tiers].reverse().find(row=>maxTile>=row.tile)||config.reward_tiers[0],itemPool=this.settings.delivery_trader.items.map(row=>row.item),item=itemPool[Math.min(itemPool.length-1,Math.floor(rng()*itemPool.length))],amount=Math.min(tier.material,Math.max(0,this.capacity()-this.rawCommittedTotal()));let coins=tier.coins+Math.min(12,Math.floor(score/16));this.coins+=coins;if(amount)this.inventory[item]=this.count(item)+amount;else{coins+=5;this.coins+=5;}
+    state.availableAt=now+config.cooldown_seconds*1000;state.plays++;state.bestTile=Math.max(state.bestTile,maxTile);state.bestScore=Math.max(state.bestScore,score);this.onChange();const reward={coins,item:amount?item:null,amount};this.onNotice(`仓库拼箱完成：${this.rewardText({coins,...(amount?{[item]:amount}:{})})}`);return {error:'',reward};
+  }
   warehousePolicyError(policies){
     const allowed=new Set(this.settings.delivery_trader.items.map(row=>row.item));if(!policies||typeof policies!=='object'||Array.isArray(policies)||Object.keys(policies).some(id=>!allowed.has(id)))return '仓库策略无效';for(const id of allowed){const policy=policies[id];if(!policy||!nonnegative(policy.min)||(policy.max!==null&&!nonnegative(policy.max))||(policy.max!==null&&policy.max<policy.min))return `${this.items[id].name}的底线或上限无效`;}return '';
   }
@@ -314,8 +340,8 @@ export class Economy {
       const cargoCrateUpgrades=data.cargoCrateUpgrades??0;if(!nonnegative(cargoCrateUpgrades)||cargoCrateUpgrades>this.settings.cargo_crate_max)throw Error();
       const milestoneIds=(this.settings.development_milestones||[]).map(row=>row.id),developmentClaims=structuredClone(data.developmentClaims??[]);if(!Array.isArray(developmentClaims)||new Set(developmentClaims).size!==developmentClaims.length||developmentClaims.some(id=>!milestoneIds.includes(id)))throw Error();
       const orderStreak=data.orderStreak??0,bestOrderStreak=data.bestOrderStreak??orderStreak;if(!nonnegative(orderStreak)||!nonnegative(bestOrderStreak)||orderStreak>bestOrderStreak||bestOrderStreak>data.trades)throw Error();
-      const arcade=structuredClone(data.arcade??{tide_match:{availableAt:0,plays:0,bestMoves:null,bestSeconds:null}}),tideMatch=arcade?.tide_match;
-      if(!arcade||typeof arcade!=='object'||Array.isArray(arcade)||Object.keys(arcade).some(id=>id!=='tide_match')||!tideMatch||typeof tideMatch!=='object'||Array.isArray(tideMatch)||!Number.isFinite(tideMatch.availableAt)||tideMatch.availableAt<0||!nonnegative(tideMatch.plays)||(tideMatch.bestMoves!==null&&(!positive(tideMatch.bestMoves)||tideMatch.bestMoves<this.settings.minigames.tide_match.pairs))||(tideMatch.bestSeconds!==null&&(!Number.isFinite(tideMatch.bestSeconds)||tideMatch.bestSeconds<=0||tideMatch.bestSeconds>3600)))throw Error();
+      const arcade=structuredClone(data.arcade??{});arcade.tide_match??={availableAt:0,plays:0,bestMoves:null,bestSeconds:null};arcade.cargo_merge??={availableAt:0,plays:0,bestTile:0,bestScore:0};const tideMatch=arcade.tide_match,cargoMerge=arcade.cargo_merge;
+      if(!arcade||typeof arcade!=='object'||Array.isArray(arcade)||Object.keys(arcade).some(id=>!['tide_match','cargo_merge'].includes(id))||!tideMatch||typeof tideMatch!=='object'||Array.isArray(tideMatch)||!Number.isFinite(tideMatch.availableAt)||tideMatch.availableAt<0||!nonnegative(tideMatch.plays)||(tideMatch.bestMoves!==null&&(!positive(tideMatch.bestMoves)||tideMatch.bestMoves<this.settings.minigames.tide_match.pairs))||(tideMatch.bestSeconds!==null&&(!Number.isFinite(tideMatch.bestSeconds)||tideMatch.bestSeconds<=0||tideMatch.bestSeconds>3600))||!cargoMerge||typeof cargoMerge!=='object'||Array.isArray(cargoMerge)||!Number.isFinite(cargoMerge.availableAt)||cargoMerge.availableAt<0||!nonnegative(cargoMerge.plays)||!nonnegative(cargoMerge.bestTile)||(cargoMerge.bestTile&&((cargoMerge.bestTile&(cargoMerge.bestTile-1))!==0||cargoMerge.bestTile>1024))||!nonnegative(cargoMerge.bestScore))throw Error();
       for(const [id,n]of Object.entries(data.inventory))if(!this.items[id]||!nonnegative(n))throw Error();
       for(const p of ['coins','reputation','trades','gathered','nextVisitor'])if(!nonnegative(data[p]))throw Error();
       for(const p of ['clock','elapsed'])if(!Number.isFinite(data[p])||data[p]<0)throw Error();
